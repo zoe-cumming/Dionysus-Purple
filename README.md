@@ -8,7 +8,7 @@ CSSE4011 Project - Couch Potato Paradise: Smart Home System Using Sensor Data
 |------------------|-----------------------------------------------------------------------------------------|
 | Tara Bashirzadeh |   |
 | Zoe Cumming      |   |
-| Jacob Gregg      |   |
+| Jacob Gregg      |   Brings the team vibes
 
 ---
 
