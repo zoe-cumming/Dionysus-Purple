@@ -46,8 +46,6 @@ int main(void)
         return 0;
     }
 
-    printk("Ultrasonic sensor initialized\n");
-
     while (1) {
         timeout_occurred = 0;
 
@@ -85,7 +83,7 @@ int main(void)
                 // Find distance
                 cycles_spent = stop_time - start_time;
                 nanoseconds_spent = k_cyc_to_ns_floor64(cycles_spent);
-                distance_cm = nanoseconds_spent / 58000;
+                distance_cm = nanoseconds_spent / 58000; // CHECK THIS VALUE
                 
                 printk("Distance: %d cm\n", distance_cm);
 
