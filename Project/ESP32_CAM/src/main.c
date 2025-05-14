@@ -4,7 +4,7 @@
 
 #define SLEEP_TIME_MS   1000
 #define LED0_NODE DT_ALIAS(led0)
-static const struct gpio_dt_spec led = DEVICE_DT_GET_ANY(led_flash);
+static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 
 int main(void) {
 	int ret;
