@@ -94,7 +94,7 @@ int main(void)
 			 * to those supported by the microphone.
 			 */
 			.min_pdm_clk_freq = 1000000,
-			.max_pdm_clk_freq = 3500000,
+			.max_pdm_clk_freq = 2000000,
 			.min_pdm_clk_dc   = 40,
 			.max_pdm_clk_dc   = 60,
 		},
