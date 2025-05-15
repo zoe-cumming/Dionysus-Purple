@@ -11,7 +11,6 @@ dmic_dev: &pdm0 {
 	status = "okay";
 	pinctrl-0 = <&pdm0_default_alt>;
 	pinctrl-names = "default";
-	clock-source = "PCLK32M";
 };
 
 // &mic_pwr {

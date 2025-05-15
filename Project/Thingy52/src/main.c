@@ -40,8 +40,8 @@ static int do_pdm_transfer(const struct device *dmic_dev,
 {
 	int ret;
 
-	LOG_INF("PCM output rate: %u, channels: %u",
-		cfg->streams[0].pcm_rate, cfg->channel.req_num_chan);
+	// LOG_INF("PCM output rate: %u, channels: %u",
+	// 	cfg->streams[0].pcm_rate, cfg->channel.req_num_chan);
 
 	ret = dmic_configure(dmic_dev, cfg);
 	if (ret < 0) {
@@ -103,7 +103,7 @@ static int do_pdm_transfer(const struct device *dmic_dev,
 		// Toggle LED for debugging 
 		gpio_pin_toggle_dt(&led);
 
-		LOG_INF("%d - got buffer %p of %u bytes", i, buffer, size);
+		// LOG_INF("%d - got buffer %p of %u bytes", i, buffer, size);
 
 		// Convert PDM values to PCM values
 		int16_t *samples = (int16_t *)buffer;
@@ -115,6 +115,8 @@ static int do_pdm_transfer(const struct device *dmic_dev,
 				LOG_INF("Clap at sample %d", i);
 			}
 		}
+
+		k_msleep(100);
 
 		k_mem_slab_free(&mem_slab, buffer);
 	}
@@ -182,9 +184,11 @@ int main(void)
 	cfg.streams[0].block_size =
 		BLOCK_SIZE(cfg.streams[0].pcm_rate, cfg.channel.req_num_chan);
 
-	ret = do_pdm_transfer(dmic_dev, &cfg, 2 * BLOCK_COUNT);
-	if (ret < 0) {
-		return 0;
+	while (1) {
+		ret = do_pdm_transfer(dmic_dev, &cfg, BLOCK_COUNT);
+		if (ret < 0) {
+			return 0;
+		}
 	}
 
 	LOG_INF("Exiting");
