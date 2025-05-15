@@ -8,7 +8,7 @@ An intelligent, multi-sensor embedded system that responds to user gestures, aud
 
 This project simulates a **smart, gesture- and audio-controlled environment** that uses sensor nodes and edge ML to provide an intuitive user experience.
 
-Imagine a future smart home or clinical workspace where interaction with appliances or devices doesn't require physical buttons or screens. Instead, simple gestures or sounds—like a hand motion or a clap—can adjust fan speed, signal a call, or update the environment display.
+Imagine a future smart home or clinical workspace where interaction with appliances or devices doesn't require physical buttons or screens. Instead, simple gestures or sounds—like a hand motion or a clap—can adjust fan speed, signal a call, turn on a light, or update the environment display.
 
 **Use case example**:  
 A person enters the room. The system detects proximity using an ultrasonic sensor, captures a hand gesture using a camera, and classifies it as a command—e.g., adjust fan speed or show a call icon. At the same time, ambient temperature is measured and displayed, and if a clap is detected, the system toggles feedback via LED. All of this happens through a seamless flow of wireless and wired communication between edge devices.
