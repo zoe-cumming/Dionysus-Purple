@@ -1,9 +1,13 @@
 /*
 This is just the Zephyr sample for using a mic
+Detects 
 */
 
+#include <stdlib.h>
+#include <math.h>
 #include <zephyr/kernel.h>
 #include <zephyr/audio/dmic.h>
+#include <zephyr/drivers/gpio.h>
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(dmic_sample);
@@ -26,6 +30,10 @@ LOG_MODULE_REGISTER(dmic_sample);
 #define BLOCK_COUNT      4
 K_MEM_SLAB_DEFINE_STATIC(mem_slab, MAX_BLOCK_SIZE, BLOCK_COUNT, 4);
 
+#define LED0_NODE DT_ALIAS(led0)
+// Set up LED for debugging
+static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
+
 static int do_pdm_transfer(const struct device *dmic_dev,
 			   struct dmic_cfg *cfg,
 			   size_t block_count)
@@ -47,17 +55,66 @@ static int do_pdm_transfer(const struct device *dmic_dev,
 		return ret;
 	}
 
+	// void *buffer;
+	// uint32_t size;
+
+	// // Toggle LED for debugging
+	// gpio_pin_toggle_dt(&led);
+
+	// // Read PDM values
+	// ret = dmic_read(dmic_dev, 0, &buffer, &size, READ_TIMEOUT); // GETTING STUCK HERE
+	// if (ret < 0) {
+	// 	LOG_ERR("Read failed: %d", ret);
+	// 	return ret;
+	// }
+
+	// // Toggle LED for debugging 
+	// gpio_pin_toggle_dt(&led);
+
+	// LOG_INF("Got buffer %p of %u bytes", buffer, size);
+
+	// // Convert PDM values to PCM values
+	// int16_t *samples = (int16_t *)buffer;
+	// size_t sample_count = size / sizeof(int16_t);
+
+	// // Detect clap
+	// for (size_t i = 0; i < sample_count; ++i) {
+	// 	if (abs(samples[i]) > 10000) {
+	// 		LOG_INF("Clap at sample %d", i);
+	// 	}
+	// }
+
+	// k_mem_slab_free(&mem_slab, buffer);
+
 	for (int i = 0; i < block_count; ++i) {
 		void *buffer;
 		uint32_t size;
+		
+		// Toggle LED for debugging
+		gpio_pin_toggle_dt(&led);
 
-		ret = dmic_read(dmic_dev, 0, &buffer, &size, READ_TIMEOUT);
+		// Read PDM values
+		ret = dmic_read(dmic_dev, 0, &buffer, &size, READ_TIMEOUT); // GETTING STUCK HERE
 		if (ret < 0) {
 			LOG_ERR("%d - read failed: %d", i, ret);
 			return ret;
 		}
 
+		// Toggle LED for debugging 
+		gpio_pin_toggle_dt(&led);
+
 		LOG_INF("%d - got buffer %p of %u bytes", i, buffer, size);
+
+		// Convert PDM values to PCM values
+		int16_t *samples = (int16_t *)buffer;
+		size_t sample_count = size / sizeof(int16_t);
+
+		// Detect clap
+		for (size_t i = 0; i < sample_count; ++i) {
+			if (abs(samples[i]) > 10000) {
+				LOG_INF("Clap at sample %d", i);
+			}
+		}
 
 		k_mem_slab_free(&mem_slab, buffer);
 	}
@@ -83,6 +140,20 @@ int main(void)
 		return 0;
 	}
 
+	ret = gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
+	if (ret < 0) {
+		return 0;
+	}
+
+	// Manually turn on powr to mic
+	const struct device *const expander = DEVICE_DT_GET(DT_NODELABEL(sx1509b));
+	if (!device_is_ready(expander)) {
+		LOG_ERR("%s is not ready", expander->name);
+		return 0;
+	}
+	gpio_pin_configure(expander, 9, GPIO_OUTPUT_ACTIVE);
+	gpio_pin_set(expander, 9, 1);
+
 	struct pcm_stream_cfg stream = {
 		.pcm_width = SAMPLE_BIT_WIDTH,
 		.mem_slab  = &mem_slab,
@@ -94,7 +165,7 @@ int main(void)
 			 * to those supported by the microphone.
 			 */
 			.min_pdm_clk_freq = 1000000,
-			.max_pdm_clk_freq = 2000000,
+			.max_pdm_clk_freq = 3250000,
 			.min_pdm_clk_dc   = 40,
 			.max_pdm_clk_dc   = 60,
 		},
@@ -107,19 +178,6 @@ int main(void)
 	cfg.channel.req_num_chan = 1;
 	cfg.channel.req_chan_map_lo =
 		dmic_build_channel_map(0, 0, PDM_CHAN_LEFT);
-	cfg.streams[0].pcm_rate = MAX_SAMPLE_RATE;
-	cfg.streams[0].block_size =
-		BLOCK_SIZE(cfg.streams[0].pcm_rate, cfg.channel.req_num_chan);
-
-	ret = do_pdm_transfer(dmic_dev, &cfg, 2 * BLOCK_COUNT);
-	if (ret < 0) {
-		return 0;
-	}
-
-	cfg.channel.req_num_chan = 2;
-	cfg.channel.req_chan_map_lo =
-		dmic_build_channel_map(0, 0, PDM_CHAN_LEFT) |
-		dmic_build_channel_map(1, 0, PDM_CHAN_RIGHT);
 	cfg.streams[0].pcm_rate = MAX_SAMPLE_RATE;
 	cfg.streams[0].block_size =
 		BLOCK_SIZE(cfg.streams[0].pcm_rate, cfg.channel.req_num_chan);
