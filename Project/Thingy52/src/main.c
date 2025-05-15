@@ -1,6 +1,5 @@
 /*
-This is just the Zephyr sample for using a mic
-Detects 
+Clap detection using Thingy52 PDM mic
 */
 
 #include <stdlib.h>
@@ -8,8 +7,8 @@ Detects
 #include <zephyr/kernel.h>
 #include <zephyr/audio/dmic.h>
 #include <zephyr/drivers/gpio.h>
-
 #include <zephyr/logging/log.h>
+
 LOG_MODULE_REGISTER(dmic_sample);
 
 #define MAX_SAMPLE_RATE  16000
@@ -40,9 +39,6 @@ static int do_pdm_transfer(const struct device *dmic_dev,
 {
 	int ret;
 
-	// LOG_INF("PCM output rate: %u, channels: %u",
-	// 	cfg->streams[0].pcm_rate, cfg->channel.req_num_chan);
-
 	ret = dmic_configure(dmic_dev, cfg);
 	if (ret < 0) {
 		LOG_ERR("Failed to configure the driver: %d", ret);
@@ -55,37 +51,6 @@ static int do_pdm_transfer(const struct device *dmic_dev,
 		return ret;
 	}
 
-	// void *buffer;
-	// uint32_t size;
-
-	// // Toggle LED for debugging
-	// gpio_pin_toggle_dt(&led);
-
-	// // Read PDM values
-	// ret = dmic_read(dmic_dev, 0, &buffer, &size, READ_TIMEOUT); // GETTING STUCK HERE
-	// if (ret < 0) {
-	// 	LOG_ERR("Read failed: %d", ret);
-	// 	return ret;
-	// }
-
-	// // Toggle LED for debugging 
-	// gpio_pin_toggle_dt(&led);
-
-	// LOG_INF("Got buffer %p of %u bytes", buffer, size);
-
-	// // Convert PDM values to PCM values
-	// int16_t *samples = (int16_t *)buffer;
-	// size_t sample_count = size / sizeof(int16_t);
-
-	// // Detect clap
-	// for (size_t i = 0; i < sample_count; ++i) {
-	// 	if (abs(samples[i]) > 10000) {
-	// 		LOG_INF("Clap at sample %d", i);
-	// 	}
-	// }
-
-	// k_mem_slab_free(&mem_slab, buffer);
-
 	for (int i = 0; i < block_count; ++i) {
 		void *buffer;
 		uint32_t size;
@@ -94,7 +59,7 @@ static int do_pdm_transfer(const struct device *dmic_dev,
 		gpio_pin_toggle_dt(&led);
 
 		// Read PDM values
-		ret = dmic_read(dmic_dev, 0, &buffer, &size, READ_TIMEOUT); // GETTING STUCK HERE
+		ret = dmic_read(dmic_dev, 0, &buffer, &size, READ_TIMEOUT);
 		if (ret < 0) {
 			LOG_ERR("%d - read failed: %d", i, ret);
 			return ret;
@@ -102,8 +67,6 @@ static int do_pdm_transfer(const struct device *dmic_dev,
 
 		// Toggle LED for debugging 
 		gpio_pin_toggle_dt(&led);
-
-		// LOG_INF("%d - got buffer %p of %u bytes", i, buffer, size);
 
 		// Convert PDM values to PCM values
 		int16_t *samples = (int16_t *)buffer;
@@ -116,6 +79,7 @@ static int do_pdm_transfer(const struct device *dmic_dev,
 			}
 		}
 
+		// Provide time for memory to be freed
 		k_msleep(100);
 
 		k_mem_slab_free(&mem_slab, buffer);
