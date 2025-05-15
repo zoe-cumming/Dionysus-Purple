@@ -83,9 +83,10 @@ This system uses a combination of BLE, UART, Wi-Fi, and MQTT-based communication
 
 2. **Clap Detection**
    - If a clap is detected → nRF52840 toggles LED
-   - Continually → forwards temperature reading to PC
+   - If no clap detected → continually forwards temperature reading to PC (even with clap detected)
 
 3. **Display**
    - PC updates M5 Core2 to show current temperature
+   - LED toggled on nRF52840 DK base node
 
 ---
