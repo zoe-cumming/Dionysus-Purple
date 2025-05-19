@@ -1,143 +1,198 @@
-/*
- * Based on zephyr/samples/net/wifi/apsta_mode
- */
-
+#include <stdio.h>
+#include <string.h>
 #include <zephyr/kernel.h>
-#include <zephyr/logging/log.h>
+#include <zephyr/net/socket.h>
 #include <zephyr/net/wifi_mgmt.h>
-#include <zephyr/net/dhcpv4_server.h>
+#include <zephyr/posix/sys/socket.h>
+#include <zephyr/net/net_ip.h>
 
-LOG_MODULE_REGISTER(MAIN);
+// WiFi settings
+#define WIFI_SSID // CONFIGURE
+#define WIFI_PSK // CONFIGURE
 
-#define MACSTR "%02X:%02X:%02X:%02X:%02X:%02X"
+// HTTP GET settings
+#define CONFIG_NET_CONFIG_PEER_IPV6_ADDR ""
+#define PEER_PORT 1234
 
-#define NET_EVENT_WIFI_MASK                                                                        \
-	(NET_EVENT_WIFI_CONNECT_RESULT | NET_EVENT_WIFI_DISCONNECT_RESULT |                        \
-	 NET_EVENT_WIFI_AP_ENABLE_RESULT | NET_EVENT_WIFI_AP_DISABLE_RESULT |                      \
-	 NET_EVENT_WIFI_AP_STA_CONNECTED | NET_EVENT_WIFI_AP_STA_DISCONNECTED)
+// Event callbacks
+static struct net_mgmt_event_callback wifi_cb;
+static struct net_mgmt_event_callback ipv4_cb;
 
-/* AP Mode Configuration */
-#define WIFI_AP_SSID       "ESP32-AP"
-#define WIFI_AP_PSK        ""
-#define WIFI_AP_IP_ADDRESS "192.168.4.1"
-#define WIFI_AP_NETMASK    "255.255.255.0"
+// Semaphores
+static K_SEM_DEFINE(sem_wifi, 0, 1);
+static K_SEM_DEFINE(sem_ipv4, 0, 1);
 
-static struct net_if *ap_iface;
-
-static struct wifi_connect_req_params ap_config;
-
-static struct net_mgmt_event_callback cb;
-
-static void wifi_event_handler(struct net_mgmt_event_callback *cb, uint32_t mgmt_event,
-			       struct net_if *iface)
+// Called when the WiFi is connected
+static void on_wifi_connection_event(struct net_mgmt_event_callback *cb,
+                                     uint32_t mgmt_event,
+                                     struct net_if *iface)
 {
-	switch (mgmt_event) {
-	case NET_EVENT_WIFI_AP_ENABLE_RESULT: {
-		LOG_INF("AP Mode is enabled. Waiting for station to connect");
-		break;
-	}
-	case NET_EVENT_WIFI_AP_DISABLE_RESULT: {
-		LOG_INF("AP Mode is disabled.");
-		break;
-	}
-	case NET_EVENT_WIFI_AP_STA_CONNECTED: {
-		struct wifi_ap_sta_info *sta_info = (struct wifi_ap_sta_info *)cb->info;
+    const struct wifi_status *status = (const struct wifi_status *)cb->info;
 
-		LOG_INF("station: " MACSTR " joined ", sta_info->mac[0], sta_info->mac[1],
-			sta_info->mac[2], sta_info->mac[3], sta_info->mac[4], sta_info->mac[5]);
-		break;
-	}
-	case NET_EVENT_WIFI_AP_STA_DISCONNECTED: {
-		struct wifi_ap_sta_info *sta_info = (struct wifi_ap_sta_info *)cb->info;
-
-		LOG_INF("station: " MACSTR " leave ", sta_info->mac[0], sta_info->mac[1],
-			sta_info->mac[2], sta_info->mac[3], sta_info->mac[4], sta_info->mac[5]);
-		break;
-	}
-	default:
-		break;
-	}
+    if (mgmt_event == NET_EVENT_WIFI_CONNECT_RESULT) {
+        if (status->status) {
+            printk("Error (%d): Connection request failed\r\n", status->status);
+        } else {
+            printk("Connected!\r\n");
+            k_sem_give(&sem_wifi);
+        }
+    } else if (mgmt_event == NET_EVENT_WIFI_DISCONNECT_RESULT) {
+        if (status->status) {
+            printk("Error (%d): Disconnection request failed\r\n", status->status);
+        } else {
+            printk("Disconnected\r\n");
+            k_sem_take(&sem_wifi, K_NO_WAIT);
+        }
+    }
 }
 
-static void enable_dhcpv4_server(void)
+// Event handler for WiFi management events
+static void on_ipv4_obtained(struct net_mgmt_event_callback *cb,
+                             uint32_t mgmt_event,
+                             struct net_if *iface)
 {
-	static struct in_addr addr;
-	static struct in_addr netmaskAddr;
-
-	if (net_addr_pton(AF_INET, WIFI_AP_IP_ADDRESS, &addr)) {
-		LOG_ERR("Invalid address: %s", WIFI_AP_IP_ADDRESS);
-		return;
-	}
-
-	if (net_addr_pton(AF_INET, WIFI_AP_NETMASK, &netmaskAddr)) {
-		LOG_ERR("Invalid netmask: %s", WIFI_AP_NETMASK);
-		return;
-	}
-
-	net_if_ipv4_set_gw(ap_iface, &addr);
-
-	if (net_if_ipv4_addr_add(ap_iface, &addr, NET_ADDR_MANUAL, 0) == NULL) {
-		LOG_ERR("unable to set IP address for AP interface");
-	}
-
-	if (!net_if_ipv4_set_netmask_by_addr(ap_iface, &addr, &netmaskAddr)) {
-		LOG_ERR("Unable to set netmask for AP interface: %s", WIFI_AP_NETMASK);
-	}
-
-	addr.s4_addr[3] += 10; /* Starting IPv4 address for DHCPv4 address pool. */
-
-	if (net_dhcpv4_server_start(ap_iface, &addr) != 0) {
-		LOG_ERR("DHCP server is not started for desired IP");
-		return;
-	}
-
-	LOG_INF("DHCPv4 server started...\n");
+    // Signal that the IP address has been obtained
+    if (mgmt_event == NET_EVENT_IPV4_ADDR_ADD) {
+        k_sem_give(&sem_ipv4);
+    }
 }
 
-static int enable_ap_mode(void)
+// Initialize the WiFi event callbacks
+void wifi_init(void)
 {
-	if (!ap_iface) {
-		LOG_INF("AP: is not initialized");
-		return -EIO;
-	}
+    // Initialize the event callbacks
+    net_mgmt_init_event_callback(&wifi_cb,
+                                 on_wifi_connection_event,
+                                 NET_EVENT_WIFI_CONNECT_RESULT | NET_EVENT_WIFI_DISCONNECT_RESULT);
+    net_mgmt_init_event_callback(&ipv4_cb,
+                                 on_ipv4_obtained,
+                                 NET_EVENT_IPV4_ADDR_ADD);
+    
+    // Add the event callbacks
+    net_mgmt_add_event_callback(&wifi_cb);
+    net_mgmt_add_event_callback(&ipv4_cb);
+}
 
-	LOG_INF("Turning on AP Mode");
-	ap_config.ssid = (const uint8_t *)WIFI_AP_SSID;
-	ap_config.ssid_length = strlen(WIFI_AP_SSID);
-	ap_config.psk = (const uint8_t *)WIFI_AP_PSK;
-	ap_config.psk_length = strlen(WIFI_AP_PSK);
-	ap_config.channel = WIFI_CHANNEL_ANY;
-	ap_config.band = WIFI_FREQ_BAND_2_4_GHZ;
+// Connect to the WiFi network (blocking)
+int wifi_connect(char *ssid, char *psk)
+{
+    int ret;
+    struct net_if *iface;
+    struct wifi_connect_req_params params;
 
-	if (strlen(WIFI_AP_PSK) == 0) {
-		ap_config.security = WIFI_SECURITY_TYPE_NONE;
-	} else {
+    // Get the default networking interface
+    iface = net_if_get_default();
 
-		ap_config.security = WIFI_SECURITY_TYPE_PSK;
-	}
+    // Fill in the connection request parameters
+    params.ssid = (const uint8_t *)ssid;
+    params.ssid_length = strlen(ssid);
+    params.psk = (const uint8_t *)psk;
+    params.psk_length = strlen(psk);
+    params.security = WIFI_SECURITY_TYPE_PSK;
+    params.band = WIFI_FREQ_BAND_UNKNOWN;
+    params.channel = WIFI_CHANNEL_ANY;
+    params.mfp = WIFI_MFP_OPTIONAL;
 
-	enable_dhcpv4_server();
+    // Connect to the WiFi network
+    ret = net_mgmt(NET_REQUEST_WIFI_CONNECT,
+                   iface,
+                   &params,
+                   sizeof(params));
 
-	int ret = net_mgmt(NET_REQUEST_WIFI_AP_ENABLE, ap_iface, &ap_config,
-			   sizeof(struct wifi_connect_req_params));
-	if (ret) {
-		LOG_ERR("NET_REQUEST_WIFI_AP_ENABLE failed, err: %d", ret);
-	}
+    // Wait for the connection to complete
+    k_sem_take(&sem_wifi, K_FOREVER);
 
-	return ret;
+    return ret;
+}
+
+// Wait for IP address (blocking)
+void wifi_wait_for_ip_addr(void)
+{
+    struct wifi_iface_status status;
+    struct net_if *iface;
+    char ip_addr[NET_IPV4_ADDR_LEN];
+    char gw_addr[NET_IPV4_ADDR_LEN];
+
+    // Get interface
+    iface = net_if_get_default();
+
+    // Wait for the IPv4 address to be obtained
+    k_sem_take(&sem_ipv4, K_FOREVER);
+
+    // Get the WiFi status
+    if (net_mgmt(NET_REQUEST_WIFI_IFACE_STATUS,
+                 iface,
+                 &status,
+                 sizeof(struct wifi_iface_status))) {
+        printk("Error: WiFi status request failed\r\n");
+    }
+
+    // Get the IP address
+    memset(ip_addr, 0, sizeof(ip_addr));
+    if (net_addr_ntop(AF_INET,
+                      &iface->config.ip.ipv4->unicast[0].ipv4.address.in_addr,
+                      ip_addr,
+                      sizeof(ip_addr)) == NULL) {
+        printk("Error: Could not convert IP address to string\r\n");
+    }
+
+    // Get the gateway address
+    memset(gw_addr, 0, sizeof(gw_addr));
+    if (net_addr_ntop(AF_INET,
+                      &iface->config.ip.ipv4->gw,
+                      gw_addr,
+                      sizeof(gw_addr)) == NULL) {
+        printk("Error: Could not convert gateway address to string\r\n");
+    }
+
+    // Print the WiFi status
+    printk("WiFi status:\r\n");
+    if (status.state >= WIFI_STATE_ASSOCIATED) {
+        printk("  SSID: %-32s\r\n", status.ssid);
+        printk("  Band: %s\r\n", wifi_band_txt(status.band));
+        printk("  Channel: %d\r\n", status.channel);
+        printk("  Security: %s\r\n", wifi_security_txt(status.security));
+        printk("  IP address: %s\r\n", ip_addr);
+        printk("  Gateway: %s\r\n", gw_addr);
+    }
+}
+
+// Disconnect from the WiFi network
+int wifi_disconnect(void)
+{
+    int ret;
+    struct net_if *iface = net_if_get_default();
+
+    ret = net_mgmt(NET_REQUEST_WIFI_DISCONNECT, iface, NULL, 0);
+
+    return ret;
 }
 
 int main(void)
 {
-	k_sleep(K_SECONDS(5));
 
-	net_mgmt_init_event_callback(&cb, wifi_event_handler, NET_EVENT_WIFI_MASK);
-	net_mgmt_add_event_callback(&cb);
+    printk("WiFi Connection and TCP Server\r\n");
 
-	/* Get AP interface in AP-STA mode. */
-	ap_iface = net_if_get_wifi_sap();
+    // Initialize WiFi
+    wifi_init();
 
-	enable_ap_mode();
+    // Connect to the WiFi network (blocking)
+    ret = wifi_connect(WIFI_SSID, WIFI_PSK);
+    if (ret < 0) {
+        printk("Error (%d): WiFi connection failed\r\n", ret);
+        return 0;
+    }
 
-	return 0;
+    // Wait to receive an IP address (blocking)
+    wifi_wait_for_ip_addr();
+
+	while (1) {
+        ;
+	}
+
+    // Close the socket
+    printk("Closing socket\r\n");
+    zsock_close(sock);
+
+    return 0;
 }
