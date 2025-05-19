@@ -18,7 +18,7 @@ LOG_MODULE_REGISTER(MAIN);
 
 /* AP Mode Configuration */
 #define WIFI_AP_SSID       "ESP32-AP"
-#define WIFI_AP_PSK        "abcd"
+#define WIFI_AP_PSK        ""
 #define WIFI_AP_IP_ADDRESS "192.168.4.1"
 #define WIFI_AP_NETMASK    "255.255.255.0"
 

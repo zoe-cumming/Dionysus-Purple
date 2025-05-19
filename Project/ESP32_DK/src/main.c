@@ -18,7 +18,7 @@ LOG_MODULE_REGISTER(MAIN);
 
 /* STA Mode Configuration */
 #define WIFI_SSID "ESP32-AP" 
-#define WIFI_PSK  "abcd" 
+#define WIFI_PSK  "" 
 
 static struct net_if *sta_iface;
 
@@ -54,7 +54,7 @@ static int connect_to_wifi(void)
 	sta_config.ssid_length = strlen(WIFI_SSID);
 	sta_config.psk = (const uint8_t *)WIFI_PSK;
 	sta_config.psk_length = strlen(WIFI_PSK);
-	sta_config.security = WIFI_SECURITY_TYPE_PSK;
+	sta_config.security = WIFI_SECURITY_TYPE_NONE;
 	sta_config.channel = WIFI_CHANNEL_ANY;
 	sta_config.band = WIFI_FREQ_BAND_2_4_GHZ;
 
