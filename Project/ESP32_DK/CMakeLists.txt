@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
-set(DTC_OVERLAY_FILE ${CMAKE_CURRENT_SOURCE_DIR}/socs/m5stack_core2.overlay)
+set(DTC_OVERLAY_FILE ${CMAKE_CURRENT_SOURCE_DIR}/socs/esp32c3_devkitm.overlay)
 
 cmake_minimum_required(VERSION 3.20.0)
 

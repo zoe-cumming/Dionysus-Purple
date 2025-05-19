@@ -11,3 +11,12 @@
         led0 = &led_flash;
     };
 };
+
+&i2c0 {
+    ov2640: ov2640@30 {
+        compatible = "ovti,ov2640";
+        reg = < 0x30 >;
+        status = "okay";
+        clock-rate-control = < 0x80 >;
+    };
+};

@@ -1,6 +1,6 @@
 import socket
 
-HOST = '0.0.0.0'  # Listen on all interfaces
+HOST = '172.17.11.168'  # Listen on all interfaces
 PORT = 12345      # Must match M5 client code
 
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

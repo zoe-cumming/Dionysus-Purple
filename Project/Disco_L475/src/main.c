@@ -10,7 +10,7 @@
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 #define WIFI_SSID       "Get Your Own WIFI" //"Super6"
 #define WIFI_PASS       "j1ms!aw3M" //"L10n5Br0nc05?"
-#define SERVER_IP       "192.168.68.64"  // Your laptop IP on hotspot
+#define SERVER_IP       "172.17.11.168"  // Your laptop IP on hotspot
 #define SERVER_PORT     12345
 
 // Define GPIO pins
@@ -97,29 +97,29 @@ static void ip_event_handler(struct net_mgmt_event_callback *cb,
 {
     if (mgmt_event == NET_EVENT_IPV4_ADDR_ADD) {
 
-        /* Now we can connect to the server */
-        struct net_if *iface = net_if_get_default();
-        char ip_str[NET_IPV4_ADDR_LEN];
+        // /* Now we can connect to the server */
+        // struct net_if *iface = net_if_get_default();
+        // char ip_str[NET_IPV4_ADDR_LEN];
 
-        if (iface == NULL) {
-            LOG_INF("No default network interface");
-            return;
-        }
+        // if (iface == NULL) {
+        //     LOG_INF("No default network interface");
+        //     return;
+        // }
 
-        if (iface->config.ip.ipv4 == NULL) {
-            LOG_INF("No IPv4 config found");
-            return;
-        }
+        // if (iface->config.ip.ipv4 == NULL) {
+        //     LOG_INF("No IPv4 config found");
+        //     return;
+        // }
 
-        struct net_if_ipv4 *ipv4 = iface->config.ip.ipv4;
-        if (ipv4->unicast_count == 0) {
-            LOG_INF("No unicast IPv4 addresses");
-            return;
-        }
+        // struct net_if_ipv4 *ipv4 = iface->config.ip.ipv4;
+        // if (ipv4->unicast_count == 0) {
+        //     LOG_INF("No unicast IPv4 addresses");
+        //     return;
+        // }
 
-        // Print first unicast address
-        net_addr_ntop(AF_INET, &ipv4->unicast[0].ipv4.address.in_addr, ip_str, sizeof(ip_str));
-        LOG_INF("Board IP address: %s", ip_str);
+        // // Print first unicast address
+        // net_addr_ntop(AF_INET, &ipv4->unicast[0].ipv4.address.in_addr, ip_str, sizeof(ip_str));
+        // LOG_INF("Board IP address: %s", ip_str);
         //connect_to_server();
     }
 }
