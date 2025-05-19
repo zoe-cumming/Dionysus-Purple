@@ -7,8 +7,8 @@
 #include <zephyr/net/net_ip.h>
 
 // WiFi settings
-#define WIFI_SSID // CONFIGURE
-#define WIFI_PSK // CONFIGURE
+#define WIFI_SSID "Get Your Own WIFI"
+#define WIFI_PSK "j1ms!aw3M"
 
 // HTTP GET settings
 #define CONFIG_NET_CONFIG_PEER_IPV6_ADDR ""
@@ -170,8 +170,12 @@ int wifi_disconnect(void)
 
 int main(void)
 {
+    socklen_t optlen = sizeof(int);
+	int ret, sock;
+    char setting[16];
+    int value = 1;
 
-    printk("WiFi Connection and TCP Server\r\n");
+    printk("WiFi Connection and TCP Client\r\n");
 
     // Initialize WiFi
     wifi_init();
@@ -186,8 +190,40 @@ int main(void)
     // Wait to receive an IP address (blocking)
     wifi_wait_for_ip_addr();
 
+    sock = zsock_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (sock < 0) {
+		printk("socket: %d", -errno);
+		return 0;
+	}
+
+    struct sockaddr_in addr = {
+		.sin_family = AF_INET,
+		.sin_port = htons(PEER_PORT),
+	};
+
+    net_addr_pton(AF_INET, "192.168.8.123", &addr.sin_addr);
+
+	if (zsock_connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+		printk("connect: %d", -errno);
+		return 0;
+	}
+
+    printk("Connected! Sending...\n");
+
 	while (1) {
-        ;
+        snprintf(setting, sizeof(setting) - 1, "%d\n", value);
+        ret = zsock_send(sock, setting, sizeof(setting) - 1, 0);
+        if (ret < 0) {
+            printk("send: %d", -errno);
+		    return 0;
+        }
+
+        value += 1;
+        if (value > 5) {
+            value = 1;
+        }
+
+        k_msleep(1000);
 	}
 
     // Close the socket
