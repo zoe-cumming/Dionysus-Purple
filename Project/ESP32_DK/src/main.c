@@ -7,8 +7,8 @@
 #include <zephyr/net/net_ip.h>
 
 // WiFi settings
-#define WIFI_SSID "Get Your Own WIFI"
-#define WIFI_PSK "j1ms!aw3M"
+#define WIFI_SSID // CONFIGURE
+#define WIFI_PSK // CONFIGURE
 
 // HTTP GET settings
 #define SERVER_IP "192.168.1.100"
