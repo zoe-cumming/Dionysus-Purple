@@ -7,11 +7,11 @@
 #include <zephyr/net/net_ip.h>
 
 // WiFi settings
-#define WIFI_SSID // CONFIGURE
+#define WIFI_SSID "Zoe (2)"
 #define WIFI_PSK // CONFIGURE
 
 // HTTP GET settings
-#define CONFIG_NET_CONFIG_PEER_IPV6_ADDR ""
+#define CONFIG_NET_CONFIG_PEER_IPV_ADDR "172.20.10.8"
 #define PEER_PORT 1234
 
 // Event callbacks
@@ -170,7 +170,6 @@ int wifi_disconnect(void)
 
 int main(void)
 {
-    socklen_t optlen = sizeof(int);
 	int ret, sock;
     char setting[16];
     int value = 1;
@@ -201,7 +200,7 @@ int main(void)
 		.sin_port = htons(PEER_PORT),
 	};
 
-    net_addr_pton(AF_INET, "192.168.8.123", &addr.sin_addr);
+    net_addr_pton(AF_INET, CONFIG_NET_CONFIG_PEER_IPV_ADDR, &addr.sin_addr);
 
 	if (zsock_connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
 		printk("connect: %d", -errno);

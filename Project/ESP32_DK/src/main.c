@@ -7,11 +7,10 @@
 #include <zephyr/net/net_ip.h>
 
 // WiFi settings
-#define WIFI_SSID // CONFIGURE
+#define WIFI_SSID "Zoe (2)"
 #define WIFI_PSK // CONFIGURE
 
 // HTTP GET settings
-#define SERVER_IP "192.168.1.100"
 #define SERVER_PORT 1234
 
 // Event callbacks
