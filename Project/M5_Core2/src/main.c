@@ -5,10 +5,14 @@
 #include <zephyr/net/wifi_mgmt.h>
 #include <zephyr/posix/sys/socket.h>
 #include <zephyr/net/net_ip.h>
+#include <zephyr/device.h>
+#include <zephyr/sys/printk.h>
+#include <lvgl.h>
+#include <zephyr/drivers/display.h>
 
 // WiFi settings
 #define WIFI_SSID "Zoe (2)"
-#define WIFI_PSK // CONFIGURE
+#define WIFI_PSK "Hello" // CONFIGURE
 
 // HTTP GET settings
 #define CONFIG_NET_CONFIG_PEER_IPV_ADDR "172.20.10.8"
@@ -21,6 +25,36 @@ static struct net_mgmt_event_callback ipv4_cb;
 // Semaphores
 static K_SEM_DEFINE(sem_wifi, 0, 1);
 static K_SEM_DEFINE(sem_ipv4, 0, 1);
+
+
+void update_display(int fan_speed, int temperature, bool lights) {
+    static lv_obj_t *fan_label;
+    static lv_obj_t *temp_label;
+    static lv_obj_t *light_label;
+
+    char buf[32];
+
+    snprintf(buf, sizeof(buf), "Fan Speed: %d RPM", fan_speed);
+    lv_label_set_text(fan_label, buf);
+
+    snprintf(buf, sizeof(buf), "Temperature: %d C", temperature);
+    lv_label_set_text(temp_label, buf);
+
+    snprintf(buf, sizeof(buf), "Lights: %s", lights ? "ON" : "OFF");
+    lv_label_set_text(light_label, buf);
+
+    lv_obj_clean(lv_scr_act());
+
+    fan_label = lv_label_create(lv_scr_act());
+    lv_obj_align(fan_label, LV_ALIGN_TOP_MID, 0, 20);
+
+    temp_label = lv_label_create(lv_scr_act());
+    lv_obj_align(temp_label, LV_ALIGN_TOP_MID, 0, 60);
+
+    light_label = lv_label_create(lv_scr_act());
+    lv_obj_align(light_label, LV_ALIGN_TOP_MID, 0, 100);
+}
+
 
 // Called when the WiFi is connected
 static void on_wifi_connection_event(struct net_mgmt_event_callback *cb,
@@ -174,6 +208,16 @@ int main(void)
     char setting[16];
     int value = 1;
 
+    const struct device *display = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
+    if (!device_is_ready(display)) {
+        printk("Display not ready\n");
+        return 0;
+    }
+
+    lv_init();
+    display_blanking_off(display);
+    lv_task_handler();
+
     printk("WiFi Connection and TCP Client\r\n");
 
     // Initialize WiFi
@@ -227,6 +271,7 @@ int main(void)
 
     // Close the socket
     printk("Closing socket\r\n");
+    update_display(100, 20, true);
     zsock_close(sock);
 
     return 0;
