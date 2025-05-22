@@ -8,6 +8,8 @@ Clap detection using Thingy52 PDM mic
 #include <zephyr/audio/dmic.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/hci.h>
 
 LOG_MODULE_REGISTER(dmic_sample);
 
@@ -32,6 +34,22 @@ K_MEM_SLAB_DEFINE_STATIC(mem_slab, MAX_BLOCK_SIZE, BLOCK_COUNT, 4);
 #define LED0_NODE DT_ALIAS(led0)
 // Set up LED for debugging
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
+
+// Constants for BLE
+#define UUID_OFFSET 4
+#define MAJOR_OFFSET 20
+#define MINOR_OFFSET 22
+#define IBEACON_EXPECTED_LEN 25
+#define ORIGINAL_RSSI_OFFSET 25
+
+struct values {
+	uint16_t temp;
+	uint16_t light;
+	uint16_t clap;
+	uint16_t newtemp;
+	uint16_t newlight;
+	uint16_t newclap;
+};
 
 static int do_pdm_transfer(const struct device *dmic_dev,
 			   struct dmic_cfg *cfg,
@@ -94,10 +112,64 @@ static int do_pdm_transfer(const struct device *dmic_dev,
 	return ret;
 }
 
+static void advertise_thingy(struct values data) {
+    uint8_t beacon_data[] = {
+        0x4C, 0x00, 0x02, 0x15,                         // Apple iBeacon prefix
+        0x19, 0xEE, 0x15, 0x16, 0x01, 0x6B, 0x4B, 0xEC, // UUID part 1 (example)
+        0xAD, 0x96, 0xBC, 0xB9, 0x6D, 0x16, 0x6E, 0x97, // UUID part 2 (example)
+        0x00, 0x00, 0x00, 0x00,                         // Major / Minor placeholder
+        0xC8                                            // TX Power (example value)
+    };
+
+	uint16_t major_part;
+    uint16_t minor_part;
+
+    // Set the measurement into MAJOR or MINOR
+	if (data.newtemp) {
+		major_part = 0;
+		minor_part = data.temp;
+	} else if (data.newlight) {
+		major_part = 1;
+		minor_part = data.light;
+	} else if (data.newclap) {
+		major_part = 2;
+		minor_part = data.clap;
+	}
+
+    sys_put_be16(major_part, &beacon_data[MAJOR_OFFSET]);
+    sys_put_be16(minor_part, &beacon_data[MINOR_OFFSET]);
+
+    struct bt_data ad[] = {
+        BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_NO_BREDR),
+        BT_DATA(BT_DATA_MANUFACTURER_DATA, beacon_data, sizeof(beacon_data)),
+    };
+
+    bt_le_adv_stop();
+    int err = bt_le_adv_start(BT_LE_ADV_NCONN, ad, ARRAY_SIZE(ad), NULL, 0);
+    if (err) {
+        printk("Advertising failed to start (err %d)\n", err);
+        return;
+    }
+
+    printk("[ADVERTISING] Measurement\n");
+
+    k_sleep(K_MSEC(200));
+    bt_le_adv_stop();
+}
+
 int main(void)
 {
 	const struct device *const dmic_dev = DEVICE_DT_GET(DT_NODELABEL(dmic_dev));
 	int ret;
+
+	// Initialise Bluetooth
+    int err;
+    err = bt_enable(NULL);
+    if (err) {
+        printk("Bluetooth init failed: %d\n", err);
+        return 0;
+    }
+    printk("Bluetooth initialized\n");
 
 	LOG_INF("DMIC sample");
 

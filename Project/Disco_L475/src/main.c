@@ -6,6 +6,8 @@
 #include <zephyr/net/socket.h>
 #include <zephyr/net/net_if.h>
 #include <zephyr/net/net_event.h>
+#include <zephyr/drivers/display.h>
+#include <lvgl.h>
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 #define WIFI_SSID       "Get Your Own WIFI" //"Super6"
