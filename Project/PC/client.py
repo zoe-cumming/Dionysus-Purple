@@ -7,8 +7,7 @@ import time
 broker = 'broker.emqx.io'
 port = 1883
 topic = 'python/mqtt'
-#client_id = f'python-mqtt-{random.randint(0, 1000)}'
-client_id = 'zephyr_subscriber'
+client_id = f'python-mqtt-{random.randint(0, 1000)}'
 username = 'emqx'
 password = 'public'
 
@@ -20,8 +19,7 @@ def connect_mqtt():
             print(f"Failed to connect, return code {reason_code}")
 
     # Specify the correct callback API version (v5 is default)
-    #client = mqtt_client.Client(client_id=client_id, protocol=mqtt_client.MQTTv5)
-    client = mqtt_client.Client(client_id=client_id, protocol=mqtt_client.MQTTv311)
+    client = mqtt_client.Client(client_id=client_id, protocol=mqtt_client.MQTTv5)
     client.username_pw_set(username, password)
     client.on_connect = on_connect
     client.connect(broker, port)
@@ -41,7 +39,7 @@ def unsubscribe(client: mqtt_client):
 def publish(client):
     msg_count = 0
     while True:
-        time.sleep(2)
+        time.sleep(1)
         msg = f"messages: {msg_count}"
         result = client.publish(topic, msg)
         # result: [0, 1]
@@ -60,13 +58,13 @@ def on_message(client, userdata, msg):
         print(f"Received `{msg.payload.decode()}` from `{msg.topic}` topic")
 
 def run():
-    client = connect_mqtt()
-    client.loop_start()
-    publish(client)
-    
     #client = connect_mqtt()
-    #subscribe(client)
-    #client.loop_forever()
+    #client.loop_start()
+    #publish(client)
+    
+    client = connect_mqtt()
+    subscribe(client)
+    client.loop_forever()
 
 
 if __name__ == '__main__':
