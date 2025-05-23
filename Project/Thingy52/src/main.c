@@ -10,6 +10,8 @@ Clap detection using Thingy52 PDM mic
 #include <zephyr/logging/log.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/hci.h>
+#include <zephyr/sys/byteorder.h>
+#include <zephyr/drivers/sensor.h>
 
 LOG_MODULE_REGISTER(dmic_sample);
 
@@ -18,6 +20,13 @@ LOG_MODULE_REGISTER(dmic_sample);
 #define BYTES_PER_SAMPLE sizeof(int16_t)
 /* Milliseconds to wait for a block to be read. */
 #define READ_TIMEOUT     1000
+
+// alias'
+#define HTS221_NODE DT_ALIAS(temphum)
+const struct device *hts221_dev = DEVICE_DT_GET(HTS221_NODE);
+#define APDS9960_NODE DT_ALIAS(light)
+const struct device *light_sensor = DEVICE_DT_GET(APDS9960_NODE);
+
 
 /* Size of a block for 100 ms of audio data. */
 #define BLOCK_SIZE(_sample_rate, _number_of_channels) \
@@ -53,7 +62,8 @@ struct values {
 
 static int do_pdm_transfer(const struct device *dmic_dev,
 			   struct dmic_cfg *cfg,
-			   size_t block_count)
+			   size_t block_count,
+			   struct values *data)
 {
 	int ret;
 
@@ -94,6 +104,9 @@ static int do_pdm_transfer(const struct device *dmic_dev,
 		for (size_t i = 0; i < sample_count; ++i) {
 			if (abs(samples[i]) > 10000) {
 				LOG_INF("Clap at sample %d", i);
+				// update clap
+				data->clap += 1;
+				data->newclap = 1;
 			}
 		}
 
@@ -112,6 +125,43 @@ static int do_pdm_transfer(const struct device *dmic_dev,
 	return ret;
 }
 
+void read_temperature(struct values *data)
+{
+	struct sensor_value temp_val;
+
+	if (!device_is_ready(hts221_dev)) {
+		LOG_ERR("HTS221 temperature sensor not ready");
+		return;
+	}
+
+	if (sensor_sample_fetch(hts221_dev) == 0 &&
+		sensor_channel_get(hts221_dev, SENSOR_CHAN_AMBIENT_TEMP, &temp_val) == 0) {
+
+		data->temp = (uint16_t)(sensor_value_to_double(&temp_val) * 100);
+		data->newtemp = 1;
+	}
+}
+
+void read_light(const struct device *light_sensor, struct values *data)
+{
+    struct sensor_value lux;
+
+    if (!device_is_ready(light_sensor)) {
+        LOG_ERR("Light sensor not ready");
+        return;
+    }
+
+    if (sensor_sample_fetch(light_sensor) == 0 &&
+        sensor_channel_get(light_sensor, SENSOR_CHAN_LIGHT, &lux) == 0) {
+
+        data->light = (uint16_t)lux.val1;  // Store integer lux value
+        data->newlight = 1;
+        LOG_INF("Ambient light: %d lux", lux.val1);
+    }
+}
+
+
+
 static void advertise_thingy(struct values data) {
     uint8_t beacon_data[] = {
         0x4C, 0x00, 0x02, 0x15,                         // Apple iBeacon prefix
@@ -121,20 +171,25 @@ static void advertise_thingy(struct values data) {
         0xC8                                            // TX Power (example value)
     };
 
-	uint16_t major_part;
-    uint16_t minor_part;
+	// Pack values: top byte = temp, bottom byte = light
+    uint16_t major_part = ((data.temp & 0xFF) << 8) | (data.light & 0xFF);
+    // Clap into upper byte of minor, lower byte can be a flag (0x01) if needed
+    uint16_t minor_part = ((data.clap & 0xFF) << 8) | 0x01;
 
     // Set the measurement into MAJOR or MINOR
-	if (data.newtemp) {
-		major_part = 0;
-		minor_part = data.temp;
-	} else if (data.newlight) {
-		major_part = 1;
-		minor_part = data.light;
-	} else if (data.newclap) {
-		major_part = 2;
-		minor_part = data.clap;
-	}
+	// if (data.newtemp && data.newclap) {
+    // major_part = data.temp;   // temperature
+    // minor_part = data.clap;   // clap count
+	// } else if (data.newtemp) {
+	// 	major_part = 0;
+	// 	minor_part = data.temp;
+	// } else if (data.newlight) {
+	// 	major_part = 1;
+	// 	minor_part = data.light;
+	// } else if (data.newclap) {
+	// 	major_part = 2;
+	// 	minor_part = data.clap;
+	// }
 
     sys_put_be16(major_part, &beacon_data[MAJOR_OFFSET]);
     sys_put_be16(minor_part, &beacon_data[MINOR_OFFSET]);
@@ -183,6 +238,12 @@ int main(void)
 		return 0;
 	}
 
+	// checks temp sensor readiness
+	if (!device_is_ready(hts221_dev)) {
+	LOG_ERR("HTS221 temperature sensor not ready");
+	return 0;
+}
+
 	// Manually turn on powr to mic
 	const struct device *const expander = DEVICE_DT_GET(DT_NODELABEL(sx1509b));
 	if (!device_is_ready(expander)) {
@@ -221,10 +282,21 @@ int main(void)
 		BLOCK_SIZE(cfg.streams[0].pcm_rate, cfg.channel.req_num_chan);
 
 	while (1) {
-		ret = do_pdm_transfer(dmic_dev, &cfg, BLOCK_COUNT);
+		struct values data = {0}; // Reset sensor values
+
+		// Read temperature and light into struct
+		read_temperature(&data);
+		read_light(light_sensor, &data);
+		// Detect claps and update struct
+		ret = do_pdm_transfer(dmic_dev, &cfg, BLOCK_COUNT, &data);
 		if (ret < 0) {
 			return 0;
 		}
+
+		// Send over BLE
+		advertise_thingy(data);
+
+		k_sleep(K_SECONDS(5));
 	}
 
 	LOG_INF("Exiting");

@@ -16,3 +16,23 @@ dmic_dev: &pdm0 {
 // &mic_pwr {
 // 	status = "okay";
 // };
+
+&hts221 {
+    status = "okay";
+};
+
+&i2c0 {
+    apds9960: apds9960@39 {
+        compatible = "avago,apds9960";
+        reg = <0x39>;
+        label = "APDS9960";
+        int-gpios = <&gpio0 23 GPIO_ACTIVE_HIGH>; // INT pin (example)
+    };
+};
+
+/ {
+    aliases {
+        temphum = &hts221;
+		light = &apds9960;
+    };
+};
