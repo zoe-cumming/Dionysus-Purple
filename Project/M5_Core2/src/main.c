@@ -28,31 +28,31 @@ static K_SEM_DEFINE(sem_ipv4, 0, 1);
 
 
 void update_display(int fan_speed, int temperature, bool lights) {
-    static lv_obj_t *fan_label;
-    static lv_obj_t *temp_label;
-    static lv_obj_t *light_label;
-
+    //Reset the screen
+    printk("Printing");
+    lv_obj_clean(lv_scr_act());
     char buf[32];
 
-    snprintf(buf, sizeof(buf), "Fan Speed: %d RPM", fan_speed);
+    lv_obj_t *fan_label = lv_label_create(lv_scr_act());
+    snprintf(buf, sizeof(buf), "Fan Speed: %d", fan_speed);
     lv_label_set_text(fan_label, buf);
+    lv_obj_align(fan_label, LV_ALIGN_TOP_MID, 0, 20);
+    lv_obj_set_style_text_color(fan_label, lv_color_black(), 0);
+    lv_obj_set_style_text_font(fan_label, &lv_font_montserrat_20, 0);
 
+    lv_obj_t *temp_label = lv_label_create(lv_scr_act());
     snprintf(buf, sizeof(buf), "Temperature: %d C", temperature);
     lv_label_set_text(temp_label, buf);
+    lv_obj_align(temp_label, LV_ALIGN_TOP_MID, 0, 100);
+    lv_obj_set_style_text_color(temp_label, lv_color_black(), 0);
+    lv_obj_set_style_text_font(temp_label, &lv_font_montserrat_20, 0);
 
+    lv_obj_t *light_label = lv_label_create(lv_scr_act());
     snprintf(buf, sizeof(buf), "Lights: %s", lights ? "ON" : "OFF");
     lv_label_set_text(light_label, buf);
-
-    lv_obj_clean(lv_scr_act());
-
-    fan_label = lv_label_create(lv_scr_act());
-    lv_obj_align(fan_label, LV_ALIGN_TOP_MID, 0, 20);
-
-    temp_label = lv_label_create(lv_scr_act());
-    lv_obj_align(temp_label, LV_ALIGN_TOP_MID, 0, 60);
-
-    light_label = lv_label_create(lv_scr_act());
-    lv_obj_align(light_label, LV_ALIGN_TOP_MID, 0, 100);
+    lv_obj_align(light_label, LV_ALIGN_TOP_MID, 0, 180);
+    lv_obj_set_style_text_color(light_label, lv_color_black(), 0);
+    lv_obj_set_style_text_font(light_label, &lv_font_montserrat_20, 0);
 }
 
 
@@ -217,6 +217,12 @@ int main(void)
     lv_init();
     display_blanking_off(display);
     lv_task_handler();
+    update_display(100, 20, true);
+
+    while (1) {
+        lv_timer_handler();    // Refresh UI
+        k_msleep(5);           // Run every ~5ms
+    }
 
     printk("WiFi Connection and TCP Client\r\n");
 
@@ -271,7 +277,6 @@ int main(void)
 
     // Close the socket
     printk("Closing socket\r\n");
-    update_display(100, 20, true);
     zsock_close(sock);
 
     return 0;
