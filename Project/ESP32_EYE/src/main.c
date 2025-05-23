@@ -1,26 +1,23 @@
 /*
- * Camera, WiFi and IoT setup on esp32s3-eye
+ * Copyright (c) 2019 Linaro Limited
+ *
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
-#include <zephyr/drivers/display.h>
 #include <zephyr/drivers/video.h>
-#include <zephyr/drivers/video-controls.h>
-#include <zephyr/net/socket.h>
 #include <zephyr/net/wifi_mgmt.h>
 #include <zephyr/posix/sys/socket.h>
 #include <zephyr/net/net_ip.h>
 
 #define VIDEO_DEV_SW "VIDEO_SW_GENERATOR"
+#define MY_PORT 5000
+#define MAX_CLIENT_QUEUE 1
 
 // WiFi settings
-#define WIFI_SSID "Zoe (2)"
-#define WIFI_PSK "z0chYo15"
-
-// HTTP GET settings
-#define HTTP_HOST "example.com"
-#define HTTP_URL "/"
+#define WIFI_SSID "//"
+#define WIFI_PSK "//"
 
 // Event callbacks
 static struct net_mgmt_event_callback wifi_cb;
@@ -108,7 +105,7 @@ int wifi_connect(char *ssid, char *psk)
                    sizeof(params));
 
     // Wait for the connection to complete
-    k_sem_take(&sem_wifi, K_FOREVER);
+    k_sem_take(&sem_wifi,K_FOREVER);
 
     return ret;
 }
@@ -176,86 +173,35 @@ int wifi_disconnect(void)
     return ret;
 }
 
-static inline int display_setup(const struct device *const display_dev, const uint32_t pixfmt)
+
+static ssize_t sendall(int sock, const void *buf, size_t len)
 {
-	struct display_capabilities capabilities;
-	int ret = 0;
+	while (len) {
+		ssize_t out_len = zsock_send(sock, buf, len, 0);
 
-	printk("Display device: %s", display_dev->name);
-
-	display_get_capabilities(display_dev, &capabilities);
-
-	printk("- Capabilities:");
-	printk("  x_resolution = %u, y_resolution = %u, supported_pixel_formats = %u"
-		"  current_pixel_format = %u, current_orientation = %u",
-		capabilities.x_resolution, capabilities.y_resolution,
-		capabilities.supported_pixel_formats, capabilities.current_pixel_format,
-		capabilities.current_orientation);
-
-	/* Set display pixel format to match the one in use by the camera */
-	switch (pixfmt) {
-	case VIDEO_PIX_FMT_RGB565:
-		if (capabilities.current_pixel_format != PIXEL_FORMAT_BGR_565) {
-			ret = display_set_pixel_format(display_dev, PIXEL_FORMAT_BGR_565);
+		if (out_len < 0) {
+			return out_len;
 		}
-		break;
-	case VIDEO_PIX_FMT_XRGB32:
-		if (capabilities.current_pixel_format != PIXEL_FORMAT_ARGB_8888) {
-			ret = display_set_pixel_format(display_dev, PIXEL_FORMAT_ARGB_8888);
-		}
-		break;
-	default:
-		return -ENOTSUP;
+		buf = (const char *)buf + out_len;
+		len -= out_len;
 	}
 
-	if (ret) {
-		printk("Unable to set display format");
-		return ret;
-	}
-
-	/* Turn off blanking if driver supports it */
-	ret = display_blanking_off(display_dev);
-	if (ret == -ENOSYS) {
-		printk("Display blanking off not available");
-		ret = 0;
-	}
-
-	return ret;
-}
-
-static inline void video_display_frame(const struct device *const display_dev,
-				       const struct video_buffer *const vbuf,
-				       const struct video_format fmt)
-{
-	struct display_buffer_descriptor buf_desc = {
-		.buf_size = vbuf->bytesused,
-		.width = fmt.width,
-		.pitch = buf_desc.width,
-		.height = vbuf->bytesused / fmt.pitch,
-	};
-
-	display_write(display_dev, 0, vbuf->line_offset, &buf_desc, vbuf->buffer);
+	return 0;
 }
 
 int main(void)
 {
-	// Video variables
+	static struct sockaddr_in addr, client_addr;
+	socklen_t client_addr_len = sizeof(client_addr);
 	struct video_buffer *buffers[CONFIG_VIDEO_BUFFER_POOL_NUM_MAX];
 	struct video_buffer *vbuf = &(struct video_buffer){};
-	struct video_format fmt;
-	struct video_caps caps;
+	static int i, ret, sock, client;
+	static struct video_format fmt;
+	static struct video_caps caps;
 	struct video_frmival frmival;
 	struct video_frmival_enum fie;
 	enum video_buf_type type = VIDEO_BUF_TYPE_OUTPUT;
 	size_t bsize;
-	int i = 0;
-	int err;
-
-	// WiFi
-	struct zsock_addrinfo hints;
-    struct zsock_addrinfo *res;
-	int sock;
-	int ret;
 
 	// Initialize WiFi
     wifi_init();
@@ -270,42 +216,41 @@ int main(void)
     // Wait to receive an IP address (blocking)
     wifi_wait_for_ip_addr();
 
-	// Get address info
-	// memset(&hints, 0, sizeof(hints));
-	hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-	ret = zsock_getaddrinfo(HTTP_HOST, "80", &hints, &res);
-    if (ret != 0) {
-        printk("Error (%d): Could not perform DNS lookup\r\n", ret);
-        return 0;
-    }
+	const struct device *const video = DEVICE_DT_GET(DT_CHOSEN(zephyr_camera));
 
-	// // Create new socket
-	// sock = zsock_socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    // if (sock < 0) {
-    //     printk("Error (%d): Could not create socket\r\n", errno);
-    //     return 0;
-    // }
-
-	// // Connect the socket
-	// ret = zsock_connect(sock, res->ai_addr, res->ai_addrlen);
-    // if (ret < 0) {
-    //     printk("Error (%d): Could not connect the socket\r\n", errno);
-    //     return 0;
-    // }
-
-	const struct device *const video_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_camera));
-
-	if (!device_is_ready(video_dev)) {
-		printk("%s: video device is not ready", video_dev->name);
+	if (!device_is_ready(video)) {
+		printk("%s: video device not ready.", video->name);
 		return 0;
 	}
 
-	printk("Video device: %s", video_dev->name);
+	// Prepare network
+	(void)memset(&addr, 0, sizeof(addr));
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(MY_PORT);
+
+	sock = zsock_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (sock < 0) {
+		printk("Failed to create TCP socket: %d", errno);
+		return 0;
+	}
+
+	ret = zsock_bind(sock, (struct sockaddr *)&addr, sizeof(addr));
+	if (ret < 0) {
+		printk("Failed to bind TCP socket: %d", errno);
+		zsock_close(sock);
+		return 0;
+	}
+
+	ret = zsock_listen(sock, MAX_CLIENT_QUEUE);
+	if (ret < 0) {
+		printk("Failed to listen on TCP socket: %d", errno);
+		zsock_close(sock);
+		return 0;
+	}
 
 	/* Get capabilities */
 	caps.type = type;
-	if (video_get_caps(video_dev, &caps)) {
+	if (video_get_caps(video, &caps)) {
 		printk("Unable to retrieve video capabilities");
 		return 0;
 	}
@@ -323,7 +268,7 @@ int main(void)
 
 	/* Get default/native format */
 	fmt.type = type;
-	if (video_get_format(video_dev, &fmt)) {
+	if (video_get_format(video, &fmt)) {
 		printk("Unable to retrieve video format");
 		return 0;
 	}
@@ -338,12 +283,12 @@ int main(void)
 	printk("- Video format: %s %ux%u",
 		VIDEO_FOURCC_TO_STR(fmt.pixelformat), fmt.width, fmt.height);
 
-	if (video_set_format(video_dev, &fmt)) {
+	if (video_set_format(video, &fmt)) {
 		printk("Unable to set format");
 		return 0;
 	}
 
-	if (!video_get_frmival(video_dev, &frmival)) {
+	if (!video_get_frmival(video, &frmival)) {
 		printk("- Default frame rate : %f fps",
 			1.0 * frmival.denominator / frmival.numerator);
 	}
@@ -351,7 +296,7 @@ int main(void)
 	printk("- Supported frame intervals for the default format:");
 	memset(&fie, 0, sizeof(fie));
 	fie.format = &fmt;
-	while (video_enum_frmival(video_dev, &fie) == 0) {
+	while (video_enum_frmival(video, &fie) == 0) {
 		if (fie.type == VIDEO_FRMIVAL_TYPE_DISCRETE) {
 			printk("   %u/%u", fie.discrete.numerator, fie.discrete.denominator);
 		} else {
@@ -363,32 +308,6 @@ int main(void)
 		fie.index++;
 	}
 
-	/* Get supported controls */
-	printk("- Supported controls:");
-
-	struct video_ctrl_query cq = {.id = VIDEO_CTRL_FLAG_NEXT_CTRL};
-
-	while (!video_query_ctrl(video_dev, &cq)) {
-		video_print_ctrl(video_dev, &cq);
-		cq.id |= VIDEO_CTRL_FLAG_NEXT_CTRL;
-	}
-
-	/* Set controls */
-	struct video_control ctrl = {.id = VIDEO_CID_HFLIP, .val = 1};
-
-	const struct device *const display_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
-
-	if (!device_is_ready(display_dev)) {
-		printk("%s: display device not ready.", display_dev->name);
-		return 0;
-	}
-
-	err = display_setup(display_dev, fmt.pixelformat);
-	if (err) {
-		printk("Unable to set up display");
-		return err;
-	}
-
 	/* Size to allocate for each buffer */
 	if (caps.min_line_count == LINE_COUNT_HEIGHT) {
 		bsize = fmt.pitch * fmt.height;
@@ -396,12 +315,8 @@ int main(void)
 		bsize = fmt.pitch * caps.min_line_count;
 	}
 
-	/* Alloc video buffers and enqueue for capture */
+	// Allocate video buffers
 	for (i = 0; i < ARRAY_SIZE(buffers); i++) {
-		/*
-		 * For some hardwares, such as the PxP used on i.MX RT1170 to do image rotation,
-		 * buffer alignment is needed in order to achieve the best performance
-		 */
 		buffers[i] = video_buffer_aligned_alloc(bsize, CONFIG_VIDEO_BUFFER_POOL_ALIGN,
 							K_FOREVER);
 		if (buffers[i] == NULL) {
@@ -409,37 +324,65 @@ int main(void)
 			return 0;
 		}
 		buffers[i]->type = type;
-		video_enqueue(video_dev, buffers[i]);
 	}
 
-	ctrl.id = VIDEO_CID_VFLIP;
-	video_set_ctrl(video_dev, &ctrl);
-
-	/* Start video capture */
-	if (video_stream_start(video_dev, type)) {
-		printk("Unable to start capture (interface)");
-		return 0;
-	}
-
-	printk("Capture started");
-
-	/* Grab video frames */
-	vbuf->type = type;
+	// Allow connections
 	while (1) {
-		err = video_dequeue(video_dev, &vbuf, K_FOREVER);
-		if (err) {
-			printk("Unable to dequeue video buf");
+		printk("TCP: Waiting for client...\n");
+
+		client = zsock_accept(sock, (struct sockaddr *)&client_addr, &client_addr_len);
+		if (client < 0) {
+			printk("Failed to accept: %d\n", errno);
 			return 0;
 		}
 
-		video_display_frame(display_dev, vbuf, fmt);
+		printk("TCP: Accepted connection\n");
 
-		// Send HTTP data
+		// Enqueue buffers
+		for (i = 0; i < ARRAY_SIZE(buffers); i++) {
+			video_enqueue(video, buffers[i]);
+		}
 
-		err = video_enqueue(video_dev, vbuf);
-		if (err) {
-			printk("Unable to requeue video buf");
+		// Capture video
+		if (video_stream_start(video, type)) {
+			printk("Unable to start video");
 			return 0;
 		}
+
+		printk("Stream started\n");
+
+		// Capture loop
+		i = 0;
+		vbuf->type = type;
+		while (!ret) {
+			ret = video_dequeue(video, &vbuf, K_FOREVER);
+			if (ret) {
+				printk("Unable to dequeue video buf");
+				return 0;
+			}
+
+			printk("\rSending frame %d\n", i++);
+
+			// Send video buffer to client
+			ret = sendall(client, vbuf->buffer, vbuf->bytesused);
+			if (ret && ret != -EAGAIN) {
+				printk("\nTCP: Client disconnected %d\n", ret);
+				zsock_close(client);
+			}
+
+			(void)video_enqueue(video, vbuf);
+		} 
+
+		// Stop capture
+		if (video_stream_stop(video, type)) {
+			printk("Unable to stop video");
+			return 0;
+		}
+
+		// Flush buffers
+		while(!ret) {
+			ret = video_dequeue(video, &vbuf, K_NO_WAIT);
+		}
+
 	}
 }
