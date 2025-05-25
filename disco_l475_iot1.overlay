@@ -1,0 +1,35 @@
+/ {
+    aliases {
+        rtc0 = &rtc;
+    };
+};
+
+// Enable QSPI NOR Flash for LittleFS
+&quadspi {
+    pinctrl-0 = <&quadspi_clk_pe10 &quadspi_ncs_pe11
+                 &quadspi_bk1_io0_pe12 &quadspi_bk1_io1_pe13
+                 &quadspi_bk1_io2_pe14 &quadspi_bk1_io3_pe15>;
+    pinctrl-names = "default";
+    dmas = <&dma1 5 5 0x0000>;
+    dma-names = "tx_rx";
+    
+    status = "okay";
+
+    mx25r6435f: qspi-nor-flash@90000000 {
+        compatible = "st,stm32-qspi-nor";
+        reg = <0x90000000 DT_SIZE_M(8)>; /* 64 Mbits */
+        qspi-max-frequency = <50000000>;
+        status = "okay";
+
+        partitions {
+            compatible = "fixed-partitions";
+            #address-cells = <1>;
+            #size-cells = <1>;
+
+            littlefs_storage: partition@700000 {
+                label = "littlefs";
+                reg = <0x000d8000 DT_SIZE_M(1)>;  // 1MB reserved for LittleFS
+            };
+        };
+    };
+};
