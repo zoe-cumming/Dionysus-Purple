@@ -42,7 +42,8 @@ def publish(client):
     msg_count = 0
     while True:
         time.sleep(2)
-        msg = f"messages: {msg_count}"
+        #msg = f"messages: {msg_count}"
+        msg = "Temp: 30, Lights: 1, Fan: 4"
         result = client.publish(topic, msg)
         # result: [0, 1]
         status = result.rc

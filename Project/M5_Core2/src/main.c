@@ -186,6 +186,23 @@ static void mqtt_evt_handler(struct mqtt_client *client, const struct mqtt_evt *
                    p->message.topic.topic.size,
                    p->message.topic.topic.utf8,
                    rx_buff);
+            int temp, fan, lights;
+
+            // Use sscanf to extract the values directly
+            if (sscanf(rx_buff, "Temp: %d, Lights: %d, Fan: %d", &temp, &lights, &fan) == 3) {
+                printf("Temperature: %d\n", temp);
+                printf("Lights: %d\n", lights);
+                printf("Fan: %d\n", fan);
+                bool light;
+                if (lights) {
+                    light = true;
+                } else {
+                    light = false;
+                }
+                update_display(fan, temp, light);
+            } else {
+                printf("Failed to parse string.\n");
+            }
         }
         break;
     default:

@@ -1,6 +1,7 @@
 import socket
 import numpy as np
 import cv2
+import os
 
 HOST = '172.20.10.10'
 PORT = 5000
@@ -56,6 +57,8 @@ def recv_exact(sock, size, timeout=5):
 # Display the images using cv2
 ################################################
 def main():
+    # frame_count = 0 
+    # os.makedirs("images", exist_ok=True)
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect((HOST, PORT))
     print(f"Connected to {HOST}:{PORT}")
@@ -73,6 +76,11 @@ def main():
         rgb_img = rgb565_to_rgb888(frame)
         bgr_img = cv2.cvtColor(rgb_img, cv2.COLOR_RGB2BGR)
         cv2.imshow("ESP32 Frame", cv2.resize(bgr_img, (480, 480), interpolation=cv2.INTER_NEAREST))
+
+        # Save the images
+        # filename = f"images/frame_{frame_count:04d}.png"
+        # cv2.imwrite(filename, bgr_img)
+        # frame_count += 1
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break

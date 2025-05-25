@@ -2,3 +2,25 @@
     compatible = "espressif,esp32-wifi";
     status = "okay";
 };
+
+/ {
+    gpio_pins {
+        compatible = "gpio-keys";
+        status = "okay";
+
+        trig_pin: trig {
+            gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>;  // GPIO4 for TRIG
+            label = "Ultrasonic TRIG";
+        };
+
+        echo_pin: echo {
+            gpios = <&gpio0 5 GPIO_ACTIVE_HIGH>;  // GPIO5 for ECHO
+            label = "Ultrasonic ECHO";
+        };
+    };
+
+    aliases {
+        trig = &trig_pin;
+        echo = &echo_pin;
+    };
+};
