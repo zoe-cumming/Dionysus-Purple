@@ -54,10 +54,26 @@ static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 #define IBEACON_EXPECTED_LEN 25
 #define ORIGINAL_RSSI_OFFSET 25
 
+#define STACK_SIZE 2048
+#define PRIORITY_CLAP -1
+#define PRIORITY_TEMP 0
+#define PRIORITY_BLE 1
+
 struct values {
 	uint16_t temp;
 	uint8_t clap;
 };
+
+struct values shared_data = {0};
+struct k_mutex data_lock;
+
+K_THREAD_STACK_DEFINE(clap_stack, STACK_SIZE);
+K_THREAD_STACK_DEFINE(temp_stack, STACK_SIZE);
+K_THREAD_STACK_DEFINE(ble_stack, STACK_SIZE);
+
+static struct k_thread clap_thread_data;
+static struct k_thread temp_thread_data;
+static struct k_thread ble_thread_data;
 
 static int do_pdm_transfer(const struct device *dmic_dev,
 			   struct dmic_cfg *cfg,
@@ -182,13 +198,63 @@ static void advertise_thingy(struct values data) {
     bt_le_adv_stop();
 }
 
+// Clap Detection Thread
+void clap_thread_fn(void *dmic_dev_ptr, void *cfg_ptr, void *unused) {
+    const struct device *dmic_dev = dmic_dev_ptr;
+    struct dmic_cfg *cfg = cfg_ptr;
+
+    while (1) {
+        struct values local = {0};
+
+        if (do_pdm_transfer(dmic_dev, cfg, BLOCK_COUNT, &local) == 0) {
+            k_mutex_lock(&data_lock, K_FOREVER);
+            shared_data.clap = local.clap;
+            k_mutex_unlock(&data_lock);
+        }
+
+        k_msleep(500); // Sampling interval
+    }
+}
+
+// Temperature Sensor Thread
+void temp_thread_fn(void *arg1, void *arg2, void *arg3) {
+    while (1) {
+        struct values local = {0};
+        read_temperature(&local);
+
+        k_mutex_lock(&data_lock, K_FOREVER);
+        shared_data.temp = local.temp;
+        k_mutex_unlock(&data_lock);
+
+        k_sleep(K_SECONDS(5));  // Sample less frequently
+    }
+}
+
+// BLE Advertising Thread
+void ble_thread_fn(void *arg1, void *arg2, void *arg3) {
+    while (1) {
+        struct values copy;
+
+        k_mutex_lock(&data_lock, K_FOREVER);
+        copy = shared_data;
+        k_mutex_unlock(&data_lock);
+
+        advertise_thingy(copy);
+        k_sleep(K_SECONDS(5));
+    }
+}
+
+
+
+
+
 
 
 int main(void)
 {
 	
 
-	const struct device *const dmic_dev = DEVICE_DT_GET(DT_NODELABEL(dmic_dev));
+	static const struct device *const dmic_dev = DEVICE_DT_GET(DT_NODELABEL(dmic_dev));
 	int ret;
 
 	// Initialise Bluetooth
@@ -227,11 +293,11 @@ int main(void)
 	gpio_pin_configure(expander, 9, GPIO_OUTPUT_ACTIVE);
 	gpio_pin_set(expander, 9, 1);
 
-	struct pcm_stream_cfg stream = {
+	static struct pcm_stream_cfg stream = {
 		.pcm_width = SAMPLE_BIT_WIDTH,
 		.mem_slab  = &mem_slab,
 	};
-	struct dmic_cfg cfg = {
+	static struct dmic_cfg cfg = {
 		.io = {
 			/* These fields can be used to limit the PDM clock
 			 * configurations that the driver is allowed to use
@@ -255,26 +321,121 @@ int main(void)
 	cfg.streams[0].block_size =
 		BLOCK_SIZE(cfg.streams[0].pcm_rate, cfg.channel.req_num_chan);
 
-	while (1) {
-		
-		
+	
 
-		struct values data = {0}; // Reset sensor values
+	k_mutex_init(&data_lock);
 
-		// Read temperature and light into struct
-		read_temperature(&data);
-		// Detect claps and update struct
-		ret = do_pdm_transfer(dmic_dev, &cfg, BLOCK_COUNT, &data);
-		if (ret < 0) {
-			return 0;
-		}
+	// Start threads
+	k_thread_create(&clap_thread_data, clap_stack, STACK_SIZE,
+					clap_thread_fn, (void *)dmic_dev, (void *)&cfg, NULL,
+					PRIORITY_CLAP, 0, K_NO_WAIT);
 
-		// Send over BLE
-		advertise_thingy(data);
+	k_thread_create(&temp_thread_data, temp_stack, STACK_SIZE,
+					temp_thread_fn, NULL, NULL, NULL,
+					PRIORITY_TEMP, 0, K_NO_WAIT);
 
-		k_sleep(K_SECONDS(5));
-	}
+	k_thread_create(&ble_thread_data, ble_stack, STACK_SIZE,
+					ble_thread_fn, NULL, NULL, NULL,
+					PRIORITY_BLE, 0, K_NO_WAIT);
+
 
 	LOG_INF("Exiting");
 	return 0;
 }
+
+
+
+// int main(void)
+// {
+	
+
+// 	const struct device *const dmic_dev = DEVICE_DT_GET(DT_NODELABEL(dmic_dev));
+// 	int ret;
+
+// 	// Initialise Bluetooth
+//     int err;
+//     err = bt_enable(NULL);
+//     if (err) {
+//         printk("Bluetooth init failed: %d\n", err);
+//         return 0;
+//     }
+//     printk("Bluetooth initialized\n");
+
+// 	LOG_INF("DMIC sample");
+
+// 	if (!device_is_ready(dmic_dev)) {
+// 		LOG_ERR("%s is not ready", dmic_dev->name);
+// 		return 0;
+// 	}
+
+// 	ret = gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
+// 	if (ret < 0) {
+// 		return 0;
+// 	}
+
+// 	// checks temp sensor readiness
+// 	if (!device_is_ready(hts221_dev)) {
+// 	LOG_ERR("HTS221 temperature sensor not ready");
+// 	return 0;
+// 	}
+
+// 	// Manually turn on powr to mic
+// 	const struct device *const expander = DEVICE_DT_GET(DT_NODELABEL(sx1509b));
+// 	if (!device_is_ready(expander)) {
+// 		LOG_ERR("%s is not ready", expander->name);
+// 		return 0;
+// 	}
+// 	gpio_pin_configure(expander, 9, GPIO_OUTPUT_ACTIVE);
+// 	gpio_pin_set(expander, 9, 1);
+
+// 	struct pcm_stream_cfg stream = {
+// 		.pcm_width = SAMPLE_BIT_WIDTH,
+// 		.mem_slab  = &mem_slab,
+// 	};
+// 	struct dmic_cfg cfg = {
+// 		.io = {
+// 			/* These fields can be used to limit the PDM clock
+// 			 * configurations that the driver is allowed to use
+// 			 * to those supported by the microphone.
+// 			*/
+// 			.min_pdm_clk_freq = 1000000,
+// 			.max_pdm_clk_freq = 3250000,
+// 			.min_pdm_clk_dc   = 40,
+// 			.max_pdm_clk_dc   = 60,
+// 		},
+// 		.streams = &stream,
+// 		.channel = {
+// 			.req_num_streams = 1,
+// 		},
+// 	};
+
+// 	cfg.channel.req_num_chan = 1;
+// 	cfg.channel.req_chan_map_lo =
+// 		dmic_build_channel_map(0, 0, PDM_CHAN_LEFT);
+// 	cfg.streams[0].pcm_rate = MAX_SAMPLE_RATE;
+// 	cfg.streams[0].block_size =
+// 		BLOCK_SIZE(cfg.streams[0].pcm_rate, cfg.channel.req_num_chan);
+
+// 	while (1) {
+		
+		
+
+// 		struct values data = {0}; // Reset sensor values
+
+// 		// Read temperature and light into struct
+// 		read_temperature(&data);
+// 		// Detect claps and update struct
+// 		ret = do_pdm_transfer(dmic_dev, &cfg, BLOCK_COUNT, &data);
+// 		if (ret < 0) {
+// 			return 0;
+// 		}
+
+// 		// Send over BLE
+// 		advertise_thingy(data);
+
+// 		k_sleep(K_SECONDS(5));
+// 	}
+
+// 	LOG_INF("Exiting");
+// 	return 0;
+// }
