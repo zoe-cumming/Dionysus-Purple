@@ -1,5 +1,6 @@
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
+#include <zephyr/devicetree.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/hci.h>
@@ -22,12 +23,20 @@
 #define MAJOR_OFFSET 20
 #define MINOR_OFFSET 22
 
+// for light
+const struct device *clk_dev;
+const struct device *data_dev;
+int clk_pin;
+int data_pin;
+
+#define LED_CLK_NODE DT_ALIAS(rgbclk)
+#define LED_DATA_NODE DT_ALIAS(rgbdata)
+
+
+
 uint16_t temp;
-uint16_t light;
 uint16_t clap;
-bool new_temp;
-bool new_light;
-bool new_clap;
+
 
 struct json_data {
     int temp;
@@ -51,7 +60,6 @@ extern void json_print(int major, int value) {
 
     struct json_data data;
     data.temp = temp;
-    data.light = light;
     data.clap = clap;
 
     if (clap) {
@@ -68,32 +76,9 @@ extern void json_print(int major, int value) {
     printk("%s\r\n", json_output);
 }
 
-// void nanopb_encode_and_print(void) {
-//     SensorData data = SensorData_init_zero;
-//     data.temp = temp;
-//     data.light = light;
-//     data.clap = clap;
-
-//     uint8_t buffer[64];
-//     pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(buffer));
-
-//     if (!pb_encode(&stream, SensorData_fields, &data)) {
-//         printk("Nanopb encoding failed: %s\n", PB_GET_ERROR(&stream));
-//         return;
-//     }
-
-//     size_t len = stream.bytes_written;
-//     printk("Nanopb Encoded SensorData (%d bytes): ", len);
-//     for (size_t i = 0; i < len; i++) {
-//         printk("%02X ", buffer[i]);
-//     }
-//     printk("\n");
-// }
-
 void nanopb_encode_and_print(void) {
     SensorData data = SensorData_init_zero;
     data.temp = temp;
-    data.light = light;
     data.clap = clap;
 
     pb_ostream_t stream = pb_ostream_from_buffer(test_encoded_buffer, sizeof(test_encoded_buffer));
@@ -122,7 +107,6 @@ void nanopb_decode_and_print(const uint8_t *buffer, size_t len) {
 
     printk("Decoded SensorData:\n");
     printk("  Temp: %d\n", data.temp);
-    printk("  Light: %d\n", data.light);
     printk("  Clap: %d\n", data.clap);
 }
 
@@ -147,26 +131,13 @@ static bool adv_data_cb(struct bt_data *data, void *user_data) {
     // Check UUID match
     if (memcmp(&payload[4], expected_uuid, 16) != 0) return true;
 
-    //printk("Advertisement received, type: %d, len: %d\n", data->type, data->data_len);
-
-    
-    // Extract fields
-    //uint16_t major = (payload[20] << 8) | payload[20 + 1];
-    //uint16_t minor = (payload[22] << 8) | payload[22 + 1];
-
-
     // Unpack values
-    // temp  = (major >> 8) & 0xFF;
-    // light = major & 0xFF;
-    // clap  = (minor >> 8) & 0xFF;
+
     temp = (payload[MAJOR_OFFSET] << 8) | payload[MAJOR_OFFSET + 1];
-    clap = (payload[MINOR_OFFSET] << 8) | payload[MINOR_OFFSET + 1];
+    clap = payload[MINOR_OFFSET + 1];
 
-    new_temp  = true;
-    new_light = true;
-    new_clap  = true;
 
-    printk("Received - Temp: %d, Light: %d, Clap: %d\n", temp, light, clap);
+    printk("Received - Temp: %d, Clap: %d\n", temp, clap);
 
 
     return false;  // Stop parsing further
@@ -178,17 +149,81 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi,
     bt_data_parse(ad, adv_data_cb, (void *)addr);
 }
 
+
+// function to send a byte to LED via the GPIO pins
+void send_byte(uint8_t b) {
+    for (int i = 0; i < 8; i++) {
+        gpio_pin_set(data_dev, data_pin, (b & 0x80) ? 1 : 0); // set data pin based on MSB
+        k_busy_wait(500); 
+        // clock pulse - delays ensure stable transition
+        gpio_pin_set(clk_dev, clk_pin, 0); // pull clk low
+        k_busy_wait(500);
+        gpio_pin_set(clk_dev, clk_pin, 1); // set clk high
+        k_busy_wait(500);
+        // move next bit to MSB 
+        b <<= 1;
+    }
+}
+
+// function to send RGB colour value to LED
+void send_colour(uint8_t red, uint8_t green, uint8_t blue) {
+     // Start by sending a byte with the format "1 1 /B7 /B6 /G7 /G6 /R7 /R6"
+     uint8_t prefix = 0b11000000;
+     if ((blue & 0x80) == 0)     prefix|= 0b00100000;
+     if ((blue & 0x40) == 0)     prefix|= 0b00010000; 
+     if ((green & 0x80) == 0)    prefix|= 0b00001000;
+     if ((green & 0x40) == 0)    prefix|= 0b00000100;
+     if ((red & 0x80) == 0)      prefix|= 0b00000010;
+     if ((red & 0x40) == 0)      prefix|= 0b00000001;
+     
+     // Send 4 bytes of zeros before the colour data
+     for (int i = 0; i < 4; i++) {
+        send_byte(0);
+     }
+     send_byte(prefix);
+         
+     // send the 3 colours (LSB first, 8-bit)
+     send_byte(blue);
+     send_byte(green);
+     send_byte(red);
+
+     // Send 4 bytes of zeros after the colour data
+     for (int i = 0; i < 4; i++) {
+        send_byte(0);
+     }
+}
+
+// Toggle between OFF (black) and ON (white)
+void toggle_light(void) {
+    static bool light_on = false;
+
+    if (light_on) {
+        send_colour(0, 0, 0);  // Off (black)
+        printk("Toggled LED OFF\n");
+    } else {
+        send_colour(255, 255, 255);  // On (white)
+        printk("Toggled LED ON\n");
+    }
+
+    light_on = !light_on;
+}
+
+
 int main(void)
 {
+    printk("Starting base node...\n");
     int err = bt_enable(NULL);
 
-    
-    printk("Starting base node...\n");
 
     if (err) {
         printk("Bluetooth init failed (err %d)\n", err);
         return 0;
     }
+
+    clk_dev = DEVICE_DT_GET(DT_GPIO_CTLR(LED_CLK_NODE, gpios));
+    data_dev = DEVICE_DT_GET(DT_GPIO_CTLR(LED_DATA_NODE, gpios));
+    clk_pin = DT_GPIO_PIN(LED_CLK_NODE, gpios);
+    data_pin = DT_GPIO_PIN(LED_DATA_NODE, gpios);
 
 
     static const struct bt_le_scan_param scan_params = {
@@ -205,30 +240,33 @@ int main(void)
         printk("BLE scanning started...\n");
     }
 
+    if (!device_is_ready(clk_dev) || !device_is_ready(data_dev)) {
+        printk("LED GPIO devices not ready\n");
+        return -1;
+    }
+
+    gpio_pin_configure(clk_dev, clk_pin, GPIO_OUTPUT_ACTIVE);
+    gpio_pin_configure(data_dev, data_pin, GPIO_OUTPUT_ACTIVE);
 
 
     while (1) {
         k_msleep(20);
+
+        bt_le_scan_stop();
+        //print_to_serial();
+        nanopb_encode_and_print();
+        nanopb_decode_and_print(test_encoded_buffer, test_encoded_len);
+        //if clap, switch light
+        if (clap == 1) {
+            toggle_light();
+            clap = 0;  // reset after action
+        }
+
+        bt_le_scan_start(&scan_params, device_found);
+
+         
         
-    
-        if (new_temp && new_light) {
-            bt_le_scan_stop();
-            //print_to_serial();
-            nanopb_encode_and_print();
-            nanopb_decode_and_print(test_encoded_buffer, test_encoded_len);
-            
-            new_temp = false;
-            new_light = false;
-            bt_le_scan_start(&scan_params, device_found);
-        }
-        if (new_clap) {
-            bt_le_scan_stop();
-            //print_to_serial();
-            nanopb_encode_and_print();
-            nanopb_decode_and_print(test_encoded_buffer, test_encoded_len);
-            new_clap = false;
-            bt_le_scan_start(&scan_params, device_found);
-        }
+
     }
 
     return 0;

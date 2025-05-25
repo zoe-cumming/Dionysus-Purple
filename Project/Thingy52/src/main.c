@@ -25,13 +25,9 @@ LOG_MODULE_REGISTER(dmic_sample);
 /* Milliseconds to wait for a block to be read. */
 #define READ_TIMEOUT     1000
 
-// alias'
+// alias for temp sensor
 #define HTS221_NODE DT_ALIAS(temphum)
 const struct device *hts221_dev = DEVICE_DT_GET(HTS221_NODE);
-
-#define LIGHT_POWER_PIN 8  // Adjust based on SX1509B pin
-const struct device *expander = DEVICE_DT_GET(DT_NODELABEL(sx1509b));
-const struct device *light_sensor = DEVICE_DT_GET(DT_ALIAS(light));
 
 
 /* Size of a block for 100 ms of audio data. */
@@ -60,11 +56,7 @@ static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 
 struct values {
 	uint16_t temp;
-	uint16_t light;
-	uint16_t clap;
-	uint16_t newtemp;
-	uint16_t newlight;
-	uint16_t newclap;
+	uint8_t clap;
 };
 
 static int do_pdm_transfer(const struct device *dmic_dev,
@@ -73,6 +65,8 @@ static int do_pdm_transfer(const struct device *dmic_dev,
 			   struct values *data)
 {
 	int ret;
+	
+	data->clap = 0; // reset clap flag
 
 	ret = dmic_configure(dmic_dev, cfg);
 	if (ret < 0) {
@@ -112,8 +106,9 @@ static int do_pdm_transfer(const struct device *dmic_dev,
 			if (abs(samples[i]) > 10000) {
 				//LOG_INF("Clap at sample %d", i);
 				// update clap
-				data->clap += 1;
-				data->newclap = 1;
+				data->clap = 1;
+
+				break;
 			}
 		}
 
@@ -145,42 +140,8 @@ void read_temperature(struct values *data)
 		sensor_channel_get(hts221_dev, SENSOR_CHAN_AMBIENT_TEMP, &temp_val) == 0) {
 
 		data->temp = (uint16_t)(sensor_value_to_double(&temp_val) * 100);
-		data->newtemp = 1;
 	}
 }
-
-void power_light_sensor(void) {
-    if (!device_is_ready(expander)) {
-        printk("SX1509B not ready\n");
-        return;
-    }
-    gpio_pin_configure(expander, LIGHT_POWER_PIN, GPIO_OUTPUT_ACTIVE);
-    gpio_pin_set(expander, LIGHT_POWER_PIN, 1);
-    k_msleep(500);  // Wait for sensor to stabilize
-}
-
-void read_light_intensity(void) {
-    if (!device_is_ready(light_sensor)) {
-        printk("APDS9960 not ready\n");
-        return;
-    }
-
-    struct sensor_value light;
-    if (sensor_sample_fetch(light_sensor) < 0) {
-        printk("Failed to fetch sample\n");
-        return;
-    }
-
-    if (sensor_channel_get(light_sensor, SENSOR_CHAN_LIGHT, &light) < 0) {
-        printk("Failed to read light channel\n");
-        return;
-    }
-
-    printk("Ambient Light: %d\n", light.val1);
-}
-
-
-
 
 static void advertise_thingy(struct values data) {
     uint8_t beacon_data[] = {
@@ -191,16 +152,10 @@ static void advertise_thingy(struct values data) {
         0xC8                                            // TX Power (example value)
     };
 
-	// Pack values: top byte = temp, bottom byte = light
-    //uint16_t major_part = ((data.temp & 0xFF) << 8) | (data.light & 0xFF);
-    // Clap into upper byte of minor, lower byte can be a flag (0x01) if needed
-    //uint16_t minor_part = ((data.clap & 0xFF) << 8) | 0x01;
 
+	printk("Packing BLE Data - Temp: %d, Clap Detected: %s\n",
+       data.temp, data.clap ? "YES" : "NO");
 
-	printk("Packing BLE Data - Temp: %d, Light: %d, Clap: %d", data.temp, data.light, data.clap);
-
-    //sys_put_be16(major_part, &beacon_data[MAJOR_OFFSET]);
-    //sys_put_be16(minor_part, &beacon_data[MINOR_OFFSET]);
 	sys_put_be16(data.temp, &beacon_data[MAJOR_OFFSET]);
 	sys_put_be16(data.clap, &beacon_data[MINOR_OFFSET]);
 
@@ -222,9 +177,6 @@ static void advertise_thingy(struct values data) {
 		printk("\n");
 	}
 
-    // Also show decoded values for clarity
-    // printk("Decoded - Temp: %d, Light: %d, Clap: %d (Major: 0x%04X, Minor: 0x%04X)\n",
-    //        data.temp, data.light, data.clap, major_part, minor_part);
 
     k_sleep(K_MSEC(20));
     bt_le_adv_stop();
@@ -232,55 +184,9 @@ static void advertise_thingy(struct values data) {
 
 
 
-// checks for connected devices by scanning the I2C bus for addresses that respond
-void i2c_scan(void)
-{
-    const struct device *i2c_dev = DEVICE_DT_GET(DT_NODELABEL(i2c0));
-    if (!device_is_ready(i2c_dev)) {
-        printk("I2C device not ready\n");
-        return;
-    }
-
-    printk("Scanning I2C bus...\n");
-    for (uint8_t addr = 0x03; addr <= 0x77; addr++) {
-        uint8_t dummy = 0;
-        struct i2c_msg msgs[] = {
-            {
-                .buf = &dummy,
-                .len = 1,
-                .flags = I2C_MSG_WRITE | I2C_MSG_STOP,
-            },
-        };
-        if (i2c_transfer(i2c_dev, msgs, 1, addr) == 0) {
-            printk("Found device at address: 0x%02X\n", addr);
-        }
-    }
-}
-
-// configures the SX1509B GPIO expander to power the APDS9960 sensor
-void power_apds9960_via_expander(void)
-{
-    if (!device_is_ready(expander)) {
-        printk("SX1509B expander not ready\n");
-        return;
-    }
-
-    int ret = gpio_pin_configure(expander, LIGHT_POWER_PIN, GPIO_OUTPUT_ACTIVE);
-    if (ret < 0) {
-        printk("Failed to configure expander pin %d\n", LIGHT_POWER_PIN);
-        return;
-    }
-
-    gpio_pin_set(expander, LIGHT_POWER_PIN, 1); // Power on
-    printk("Powered APDS9960 using SX1509B pin %d\n", LIGHT_POWER_PIN);
-
-    k_msleep(500); // Allow sensor to power up
-}
-
-
 int main(void)
 {
-	k_sleep(K_SECONDS(3));  // Wait for RTT Viewer to connect
+	
 
 	const struct device *const dmic_dev = DEVICE_DT_GET(DT_NODELABEL(dmic_dev));
 	int ret;
@@ -312,40 +218,14 @@ int main(void)
 	return 0;
 	}
 
-	power_light_sensor();
-	power_apds9960_via_expander();
-	i2c_scan();
-
-	// Try to read APDS9960 ID from I2C address 0x68
-	uint8_t id = 0;
-	const struct device *i2c_dev = DEVICE_DT_GET(DT_NODELABEL(i2c0));
-	if (i2c_reg_read_byte(i2c_dev, 0x68, 0x92, &id) == 0) {
-		printk("APDS9960 ID read from 0x68 reg 0x92: 0x%02X\n", id);
-	} else {
-		printk("Failed to read APDS9960 ID from 0x68\n");
+	// Manually turn on powr to mic
+	const struct device *const expander = DEVICE_DT_GET(DT_NODELABEL(sx1509b));
+	if (!device_is_ready(expander)) {
+		LOG_ERR("%s is not ready", expander->name);
+		return 0;
 	}
-
-	// for (int i = 0; i < 16; i++) {
-	// 	printk("Testing pin %d\n", i);
-	// 	gpio_pin_configure(expander, i, GPIO_OUTPUT_ACTIVE);
-	// 	gpio_pin_set(expander, i, 1);
-	// 	k_msleep(1000);  // give time to see if sensor appears
-
-	// 	i2c_scan(); // or manually try reading reg 0x92 from APDS9960
-	// 	uint8_t id;
-	// 	const struct device *i2c_dev = DEVICE_DT_GET(DT_NODELABEL(i2c0));
-	// 	if (i2c_reg_read_byte(i2c_dev, 0x39, 0x92, &id) == 0) {
-	// 		printk("Read APDS9960 ID: 0x%02X from SX1509B pin %d\n", id, i);
-	// 	} else {
-	// 		printk("Failed to read APDS9960 ID on SX1509B pin %d\n", i);
-	// 	}
-
-	// 	gpio_pin_set(expander, i, 0);  // Turn off pin after test
-	// 	k_msleep(500);
-	// }
-	// Try to read register 0x92 from address 0x68
-
-	
+	gpio_pin_configure(expander, 9, GPIO_OUTPUT_ACTIVE);
+	gpio_pin_set(expander, 9, 1);
 
 	struct pcm_stream_cfg stream = {
 		.pcm_width = SAMPLE_BIT_WIDTH,
@@ -377,18 +257,12 @@ int main(void)
 
 	while (1) {
 		
-		//read_light_intensity();
-
-		// gpio_pin_set(expander, LIGHT_POWER_PIN, 0);
-		// k_msleep(200);
-		// gpio_pin_set(expander, LIGHT_POWER_PIN, 1);
-		// printk("Toggled SX1509B pin %d\n", LIGHT_POWER_PIN);
+		
 
 		struct values data = {0}; // Reset sensor values
 
 		// Read temperature and light into struct
 		read_temperature(&data);
-		//read_light(&data);
 		// Detect claps and update struct
 		ret = do_pdm_transfer(dmic_dev, &cfg, BLOCK_COUNT, &data);
 		if (ret < 0) {

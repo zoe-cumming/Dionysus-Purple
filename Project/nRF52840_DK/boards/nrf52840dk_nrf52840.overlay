@@ -1,0 +1,21 @@
+// Defining GPIO pins (manually controlling Grove Chainable RGB LED)
+
+/ {
+    aliases {
+        rgbclk = &rgb_clk;
+        rgbdata = &rgb_data;
+    };
+
+    gpios {
+        compatible = "gpio-leds";
+
+        rgb_clk: clk {
+            gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>;
+        };
+
+        rgb_data: data {
+            gpios = <&gpio0 14 GPIO_ACTIVE_HIGH>;
+        };
+    };
+};
+
