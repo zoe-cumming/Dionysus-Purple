@@ -13,6 +13,19 @@
 #include <zephyr/net/dns_resolve.h>
 #include <zephyr/net/net_core.h>
 #include <zephyr/net/net_if.h>
+#include <zephyr/drivers/gpio.h>
+
+#define STACK_SIZE 1024
+#define POLL_THREAD_PRIORITY 1
+#define ULTRA_THREAD_PRIORITY 2
+
+#define TRIG_PIN 4
+#define ECHO_PIN 5
+#define GPIO_NODE DT_NODELABEL(gpio0)
+
+// Define timeout values
+#define ECHO_TIMEOUT_US 25000
+#define MAX_RANGE_TIMEOUT_US 40000 // CHANGE THIS VALUE?
 
 // WiFi settings
 #define WIFI_SSID "Super6"
@@ -46,6 +59,8 @@ static K_SEM_DEFINE(sem_mqtt_connected, 0, 1);
 static K_SEM_DEFINE(dns_sem, 0, 1);
 static K_SEM_DEFINE(sem_wifi, 0, 1);
 static K_SEM_DEFINE(sem_ipv4, 0, 1);
+static K_SEM_DEFINE(poll_sem, 0, 1);
+static K_SEM_DEFINE(ultra_sem, 0, 1);
 
 void dns_result_cb(enum dns_resolve_status status, struct dns_addrinfo *info, void *user_data) {
 	char hr_addr[NET_IPV4_ADDR_LEN];
@@ -123,6 +138,8 @@ static int resolve_dns(void)
 
 static void mqtt_evt_handler(struct mqtt_client *client, const struct mqtt_evt *evt)
 {
+    int temp, fan, lights;
+    
     switch (evt->type) {
     case MQTT_EVT_CONNACK:
         if (evt->result == 0) {
@@ -400,6 +417,116 @@ int wifi_disconnect(void)
     return ret;
 }
 
+void poll_thread(void *arg1, void *arg2, void *arg3) {
+
+    while (k_sem_count_get(&poll_sem) == 0) {
+        k_sleep(K_MSEC(100)); // Give some delay for CPU
+    }
+
+    while (1) {
+        // Poll for MQTT events until connected
+        mqtt_input(&client);
+        mqtt_live(&client);
+        k_sleep(K_MSEC(100)); // Give some delay for CPU
+    }
+}
+
+void ultra_thread(void *arg1, void *arg2, void *arg3) {
+    // Define timing variables
+    uint32_t start_time, cycles_spent;
+    uint32_t stop_time = 0;
+    uint64_t nanoseconds_spent;
+    uint32_t distance_cm;
+    int ret, timeout_occurred;
+
+    // Set-up device
+    const struct device *gpio_dev = DEVICE_DT_GET(GPIO_NODE);
+    if (!device_is_ready(gpio_dev)) {
+        printk("Error: GPIO device not ready\n");
+        return;
+    }
+
+    // Configure pins
+    ret = gpio_pin_configure(gpio_dev, TRIG_PIN, GPIO_OUTPUT_INACTIVE);
+    if (ret < 0) {
+        printk("Error configuring trigger pin: %d\n", ret);
+        return;
+    }
+
+    ret = gpio_pin_configure(gpio_dev, ECHO_PIN, GPIO_INPUT);
+    if (ret < 0) {
+        printk("Error configuring echo pin: %d\n", ret);
+        return;
+    }
+
+    while (k_sem_count_get(&ultra_sem) == 0) {
+        k_sleep(K_MSEC(100)); // Give some delay for CPU
+    }
+
+    while (1) {
+        timeout_occurred = 0;
+
+        // Send 10us trigger pulse
+        gpio_pin_set(gpio_dev, TRIG_PIN, 1);
+        k_busy_wait(10);
+        gpio_pin_set(gpio_dev, TRIG_PIN, 0);
+
+        uint32_t echo_start_time = k_cycle_get_32();
+
+        // Wait allocated time for echo pin to be set high
+        while (gpio_pin_get(gpio_dev, ECHO_PIN) == 0) {
+            if (k_cyc_to_us_floor32(k_cycle_get_32() - echo_start_time) > ECHO_TIMEOUT_US) {
+                timeout_occurred = 1;
+                break;
+            }
+        }
+        
+        // Echo set high
+        if (!timeout_occurred) {
+            // Start timing
+            start_time = k_cycle_get_32();
+
+            // Wait for echo to go low
+            while (gpio_pin_get(gpio_dev, ECHO_PIN) == 1) {
+                stop_time = k_cycle_get_32();
+
+                if (k_cyc_to_us_floor32(stop_time - start_time) > MAX_RANGE_TIMEOUT_US) {
+                    timeout_occurred = 1;
+                    break;
+                }
+            }
+
+            if (!timeout_occurred) {
+                // Find distance
+                cycles_spent = stop_time - start_time;
+                nanoseconds_spent = k_cyc_to_ns_floor64(cycles_spent);
+                distance_cm = nanoseconds_spent / 58000; // CHECK THIS VALUE
+                
+                printk("Distance: %d cm\n", distance_cm);
+
+                // This will then be sent via Wifi
+                if (distance_cm < 50) {
+                    //Broadcast the ultrasonic value
+                    if (client.internal.state) {
+                        //ret = mqtt_subscribe_topic(MQTT_SUBSCRIBE_TOPIC);
+                        ret = mqtt_publish_message(MQTT_SUBSCRIBE_TOPIC, "Hello from ESP");
+                        if (ret < 0) {
+                            printf("Failed to subscribe to topic, error: %d\n", ret);
+                            return;
+                        }
+                    } else {
+                        printf("MQTT client not connected, cannot subscribe.\n");
+                    }
+
+                }
+            }
+        }
+
+        // Wait 
+        k_sleep(K_MSEC(100));
+    }
+}
+
 int main(void)
 {
     int ret;
@@ -440,8 +567,8 @@ int main(void)
     }
 
     if (client.internal.state) {
-        //ret = mqtt_subscribe_topic(MQTT_SUBSCRIBE_TOPIC);
-        ret = mqtt_publish_message(MQTT_SUBSCRIBE_TOPIC, "Hello from ESP");
+        ret = mqtt_subscribe_topic(MQTT_SUBSCRIBE_TOPIC);
+        //ret = mqtt_publish_message(MQTT_SUBSCRIBE_TOPIC, "Hello from ESP");
         if (ret < 0) {
             printf("Failed to subscribe to topic, error: %d\n", ret);
             return 1;
@@ -449,6 +576,9 @@ int main(void)
     } else {
         printf("MQTT client not connected, cannot subscribe.\n");
     }
+
+    k_sem_give(&poll_sem);
+    k_sem_give(&ultra_sem);
 
     while (1) {
         /* Handle incoming MQTT events - received messages, etc. */
@@ -482,3 +612,6 @@ int main(void)
 
     return 0;
 }
+
+K_THREAD_DEFINE(ultra_id, STACK_SIZE, ultra_thread, NULL, NULL, NULL, ULTRA_THREAD_PRIORITY, 0, 0);
+K_THREAD_DEFINE(mqtt_poll_id, STACK_SIZE, poll_thread, NULL, NULL, NULL, POLL_THREAD_PRIORITY, 0, 0);
