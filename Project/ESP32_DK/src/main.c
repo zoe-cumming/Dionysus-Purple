@@ -7,7 +7,7 @@
 #include <zephyr/net/net_ip.h>
 
 // WiFi settings
-#define WIFI_SSID "Zoe (2)"
+#define WIFI_SSID "Zoe"
 #define WIFI_PSK // CONFIGURE
 
 // HTTP GET settings
