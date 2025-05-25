@@ -13,13 +13,18 @@ READY_SIZE = 5
 # Convert the RGB565 image data to RGB888
 ################################################
 def rgb565_to_rgb888(frame):
-    data = np.frombuffer(frame, dtype=np.uint16).reshape((HEIGHT, WIDTH))
+    # Read the data using byteswap for little endian
+    data = np.frombuffer(frame, dtype=np.uint16).byteswap().reshape((HEIGHT, WIDTH))
 
-    r = ((((data >> 11) & 0x1F) * 527) + 23) >> 6
-    g = ((((data >> 5) & 0x3F) * 259) + 33) >> 6
-    b = (((data & 0x1F) * 527) + 23) >> 6
+    r = ((data >> 11) & 0x1F) << 3
+    g = ((data >> 5) & 0x3F) << 2
+    b = (data & 0x1F) << 3
 
-    rgb = r << 16 | g << 8 | b
+    r |= (r >> 5)
+    g |= (g >> 6)
+    b |= (b >> 5)
+
+    rgb = np.stack((r, g, b), axis=-1).astype(np.uint8)
     return rgb
 
 ################################################
@@ -65,8 +70,9 @@ def main():
             print("Connection closed / recv_exact failure")
             break
 
-        gray_img = rgb565_to_rgb888(frame)
-        cv2.imshow("ESP32 Grayscale Frame", cv2.resize(gray_img, (480, 480), interpolation=cv2.INTER_NEAREST))
+        rgb_img = rgb565_to_rgb888(frame)
+        bgr_img = cv2.cvtColor(rgb_img, cv2.COLOR_RGB2BGR)
+        cv2.imshow("ESP32 Frame", cv2.resize(bgr_img, (480, 480), interpolation=cv2.INTER_NEAREST))
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
