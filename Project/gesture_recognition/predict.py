@@ -5,7 +5,14 @@ from tensorflow.keras.preprocessing.image import load_img, img_to_array
 
 # Constants
 IMG_SIZE = (224, 224)
-IMAGE_PATH = 'testing_images/4/901.jpg'  # Replace with other image filenames
+IMAGE_PATH = 'actual_images/zero.jpg'  # Replace with other image filenames
+IMAGE_PATH1 = 'actual_images/one.jpg'
+IMAGE_PATH2 = 'actual_images/two.jpg'
+IMAGE_PATH3 = 'actual_images/three.jpg'
+IMAGE_PATH4 = 'actual_images/four.jpg'
+IMAGE_PATH5 = 'actual_images/five.jpg'
+IMAGE_PATH6 = 'actual_images/phone.jpg'
+
 
 # Load model
 model = load_model('gesture_model.h5')
@@ -26,3 +33,10 @@ def classify_image(image_path):
 
 # Run it
 classify_image(IMAGE_PATH)
+classify_image(IMAGE_PATH1)
+classify_image(IMAGE_PATH2)
+classify_image(IMAGE_PATH3)
+classify_image(IMAGE_PATH4)
+classify_image(IMAGE_PATH5)
+classify_image(IMAGE_PATH6)
+
