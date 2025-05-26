@@ -12,8 +12,8 @@ from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 
 # Paths
 BASE_DIR = os.getcwd()
-TRAIN_DIR = os.path.join(BASE_DIR, 'training_images')
-TEST_DIR = os.path.join(BASE_DIR, 'testing_images')
+TRAIN_DIR = os.path.join(BASE_DIR, 'training_images1')
+TEST_DIR = os.path.join(BASE_DIR, 'testing_images1')
 
 # Config
 IMG_SIZE = (224, 224)
@@ -80,7 +80,7 @@ model.compile(optimizer=Adam(learning_rate=1e-4),
 
 # Callbacks
 early_stop = EarlyStopping(patience=3, restore_best_weights=True)
-checkpoint = ModelCheckpoint("best_model.keras", save_best_only=True)
+checkpoint = ModelCheckpoint("best_model1.keras", save_best_only=True)
 
 # Train top layers
 model.fit(
@@ -125,7 +125,7 @@ print("Classification Report:")
 print(classification_report(true_labels, pred_labels, target_names=class_names))
 
 # Save final model
-model.save("gesture_model.keras")
+model.save("gesture_model1.keras")
 
 
 # import os
