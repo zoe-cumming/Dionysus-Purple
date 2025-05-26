@@ -22,22 +22,17 @@ LOG_MODULE_REGISTER(dmic_sample);
 #define MAX_SAMPLE_RATE  16000
 #define SAMPLE_BIT_WIDTH 16
 #define BYTES_PER_SAMPLE sizeof(int16_t)
-/* Milliseconds to wait for a block to be read. */
 #define READ_TIMEOUT     1000
 
 // alias for temp sensor
 #define HTS221_NODE DT_ALIAS(temphum)
 const struct device *hts221_dev = DEVICE_DT_GET(HTS221_NODE);
 
-
-/* Size of a block for 100 ms of audio data. */
+// Block size for DMIC
 #define BLOCK_SIZE(_sample_rate, _number_of_channels) \
 	(BYTES_PER_SAMPLE * (_sample_rate / 10) * _number_of_channels)
 
-/* Driver will allocate blocks from this slab to receive audio data into them.
- * Application, after getting a given block from the driver and processing its
- * data, needs to free that block.
- */
+// Slabs for DMIC
 #define MAX_BLOCK_SIZE   BLOCK_SIZE(MAX_SAMPLE_RATE, 2)
 #define BLOCK_COUNT      4
 K_MEM_SLAB_DEFINE_STATIC(mem_slab, MAX_BLOCK_SIZE, BLOCK_COUNT, 4);
@@ -53,6 +48,10 @@ static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 #define TX_POWER_OFFSET 24
 #define IBEACON_EXPECTED_LEN 25
 #define ORIGINAL_RSSI_OFFSET 25
+
+// Constants for light sensor
+#define SLAVE_ADDRESS 0x38
+
 
 #define STACK_SIZE 2048
 #define PRIORITY_CLAP -1
@@ -70,10 +69,12 @@ struct k_mutex data_lock;
 K_THREAD_STACK_DEFINE(clap_stack, STACK_SIZE);
 K_THREAD_STACK_DEFINE(temp_stack, STACK_SIZE);
 K_THREAD_STACK_DEFINE(ble_stack, STACK_SIZE);
+K_THREAD_STACK_DEFINE(light_stack, STACK_SIZE);
 
 static struct k_thread clap_thread_data;
 static struct k_thread temp_thread_data;
 static struct k_thread ble_thread_data;
+static struct k_thread light_thread_data;
 
 static int do_pdm_transfer(const struct device *dmic_dev,
 			   struct dmic_cfg *cfg,
@@ -119,12 +120,10 @@ static int do_pdm_transfer(const struct device *dmic_dev,
 
 		// Detect clap
 		for (size_t i = 0; i < sample_count; ++i) {
-			if (abs(samples[i]) > 10000) {
+			if ((abs(samples[i]) > 10000) && (i != 32)) {
 				LOG_INF("Clap at sample %d", i);
 				// update clap
 				data->clap = 1;
-
-				break;
 			}
 		}
 
@@ -212,7 +211,7 @@ void clap_thread_fn(void *dmic_dev_ptr, void *cfg_ptr, void *unused) {
             k_mutex_unlock(&data_lock);
         }
 
-        k_msleep(20); // Sampling interval
+        k_msleep(10); // Sampling interval
     }
 }
 
@@ -245,15 +244,8 @@ void ble_thread_fn(void *arg1, void *arg2, void *arg3) {
 }
 
 
-
-
-
-
-
 int main(void)
 {
-	
-
 	static const struct device *const dmic_dev = DEVICE_DT_GET(DT_NODELABEL(dmic_dev));
 	int ret;
 
@@ -297,12 +289,10 @@ int main(void)
 		.pcm_width = SAMPLE_BIT_WIDTH,
 		.mem_slab  = &mem_slab,
 	};
+
+	// Configure clocks for mic
 	static struct dmic_cfg cfg = {
 		.io = {
-			/* These fields can be used to limit the PDM clock
-			 * configurations that the driver is allowed to use
-			 * to those supported by the microphone.
-			*/
 			.min_pdm_clk_freq = 1000000,
 			.max_pdm_clk_freq = 3250000,
 			.min_pdm_clk_dc   = 40,
@@ -321,8 +311,6 @@ int main(void)
 	cfg.streams[0].block_size =
 		BLOCK_SIZE(cfg.streams[0].pcm_rate, cfg.channel.req_num_chan);
 
-	
-
 	k_mutex_init(&data_lock);
 
 	// Start threads
@@ -333,6 +321,10 @@ int main(void)
 	k_thread_create(&temp_thread_data, temp_stack, STACK_SIZE,
 					temp_thread_fn, NULL, NULL, NULL,
 					PRIORITY_TEMP, 0, K_NO_WAIT);
+
+	k_thread_create(&light_thread_data, light_stack, STACK_SIZE, 
+					light_thread_fn, NULL, NULL, NULL, 
+					PRIORITY_LIGHT, 0, K_NO_WAIT);
 
 	k_thread_create(&ble_thread_data, ble_stack, STACK_SIZE,
 					ble_thread_fn, NULL, NULL, NULL,

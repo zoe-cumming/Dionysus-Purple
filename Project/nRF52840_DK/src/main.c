@@ -365,6 +365,7 @@ static int lights_cli(const struct shell *sh, size_t argc, char **argv)
         shell_print(sh, "Invalid Light Command");
         return -1;
     }
+    return -1;
 }
 
 // Define shell commands for CLI
