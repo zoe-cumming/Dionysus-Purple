@@ -33,6 +33,20 @@ int data_pin;
 #define LED_DATA_NODE DT_ALIAS(rgbdata)
 
 
+// Define RGB values for the 8 primary colours
+// colours set by R, G, B, intensity (as on-255 or off-0)
+static const uint8_t COLOURS[][3] = {
+    {0, 0, 0},      // Black
+    {0, 0, 255},    // Blue
+    {0, 255, 0},    // Green
+    {0, 255, 255},  // Cyan
+    {255, 0, 0},    // Red
+    {255, 0, 255},  // Magenta
+    {255, 255, 0},  // Yellow
+    {255, 255, 255} // White
+};
+
+
 
 uint16_t temp;
 uint16_t clap;
@@ -193,6 +207,11 @@ void send_colour(uint8_t red, uint8_t green, uint8_t blue) {
      }
 }
 
+void reset_leds(void) {
+    gpio_pin_set(data_dev, data_pin, 0);
+    k_msleep(100); // hold low to reset internal state
+}
+
 // Toggle between OFF (black) and ON (white)
 void toggle_light(void) {
     static bool light_on = false;
@@ -209,6 +228,22 @@ void toggle_light(void) {
 }
 
 
+
+// debug
+void light_off(void) {
+
+    int index = 0;
+    
+    //send_colour(0, 0, 0);  // Off (black)
+    
+    
+    printk("Sending colour: R=%d, G=%d, B=%d\n", COLOURS[index][0], COLOURS[index][1], COLOURS[index][2]);
+
+    // call function to send colour data to LED
+    send_colour(COLOURS[index][0], COLOURS[index][1], COLOURS[index][2]);
+    
+}
+
 int main(void)
 {
     printk("Starting base node...\n");
@@ -219,11 +254,6 @@ int main(void)
         printk("Bluetooth init failed (err %d)\n", err);
         return 0;
     }
-
-    clk_dev = DEVICE_DT_GET(DT_GPIO_CTLR(LED_CLK_NODE, gpios));
-    data_dev = DEVICE_DT_GET(DT_GPIO_CTLR(LED_DATA_NODE, gpios));
-    clk_pin = DT_GPIO_PIN(LED_CLK_NODE, gpios);
-    data_pin = DT_GPIO_PIN(LED_DATA_NODE, gpios);
 
 
     static const struct bt_le_scan_param scan_params = {
@@ -240,28 +270,57 @@ int main(void)
         printk("BLE scanning started...\n");
     }
 
+    // Get GPIO devices from device tree
+    // gets handle to GPIO controller defined in overlay file
+    clk_dev = DEVICE_DT_GET(DT_GPIO_CTLR(LED_CLK_NODE, gpios));
+    data_dev = DEVICE_DT_GET(DT_GPIO_CTLR(LED_DATA_NODE, gpios));
+    // gets pin number from LED clock and data - reads macros from overlay at runtime
+    clk_pin = DT_GPIO_PIN(LED_CLK_NODE, gpios);
+    data_pin = DT_GPIO_PIN(LED_DATA_NODE, gpios);
+
+
+
+    // check if GPIO driver for clk and data is initialised
     if (!device_is_ready(clk_dev) || !device_is_ready(data_dev)) {
-        printk("LED GPIO devices not ready\n");
+        printk("Error: LED GPIO devices not ready\n"); // debug output
         return -1;
+    } else {
+        printk("Chainable LED initialised");
     }
 
+    // Configure GPIO pins for output - set high by default
     gpio_pin_configure(clk_dev, clk_pin, GPIO_OUTPUT_ACTIVE);
     gpio_pin_configure(data_dev, data_pin, GPIO_OUTPUT_ACTIVE);
 
+   
+
+    reset_leds();
+
+    // init time
+    //uint64_t last_toggle_time = 0;
 
     while (1) {
-        k_msleep(20);
+        //k_msleep(20);
+
 
         bt_le_scan_stop();
-        //print_to_serial();
+        // //print_to_serial();
         nanopb_encode_and_print();
         nanopb_decode_and_print(test_encoded_buffer, test_encoded_len);
         //if clap, switch light
         if (clap == 1) {
-            toggle_light();
-            clap = 0;  // reset after action
+             toggle_light();
+             clap = 0;  // reset after action
         }
 
+        // uint64_t now = k_uptime_get();
+
+        // //Toggle light every 1000 ms
+        // if (now - last_toggle_time >= 1000) {
+        //     toggle_light();  // Toggle the LED
+        //     last_toggle_time = now;
+        // }
+    
         bt_le_scan_start(&scan_params, device_found);
 
          
