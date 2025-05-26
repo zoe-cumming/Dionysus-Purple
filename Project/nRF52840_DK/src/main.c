@@ -18,10 +18,9 @@
 #include <pb_encode.h>
 #include <pb_decode.h>
 
-
-
 #define MAJOR_OFFSET 20
 #define MINOR_OFFSET 22
+#define ORIGINAL_RSSI_OFFSET 25
 
 // for light
 const struct device *clk_dev;
@@ -32,11 +31,9 @@ int data_pin;
 #define LED_CLK_NODE DT_ALIAS(rgbclk)
 #define LED_DATA_NODE DT_ALIAS(rgbdata)
 
-
-
 uint16_t temp;
 uint16_t clap;
-
+uint16_t light;
 
 struct json_data {
     int temp;
@@ -47,13 +44,11 @@ struct json_data {
 static uint8_t test_encoded_buffer[64];
 static size_t test_encoded_len;
 
-
 static const struct json_obj_descr data_struct[] = {
     JSON_OBJ_DESCR_PRIM(struct json_data, temp, JSON_TOK_NUMBER),
     JSON_OBJ_DESCR_PRIM(struct json_data, light, JSON_TOK_NUMBER),
     JSON_OBJ_DESCR_PRIM(struct json_data, clap, JSON_TOK_NUMBER),
 };
-
 
 extern void json_print(int major, int value) {
     char json_output[256];
@@ -80,6 +75,7 @@ void nanopb_encode_and_print(void) {
     SensorData data = SensorData_init_zero;
     data.temp = temp;
     data.clap = clap;
+    data.light = light;
 
     pb_ostream_t stream = pb_ostream_from_buffer(test_encoded_buffer, sizeof(test_encoded_buffer));
 
@@ -110,8 +106,6 @@ void nanopb_decode_and_print(const uint8_t *buffer, size_t len) {
     printk("  Clap: %d\n", data.clap);
 }
 
-
-
 static bool adv_data_cb(struct bt_data *data, void *user_data) {
 
 
@@ -121,7 +115,7 @@ static bool adv_data_cb(struct bt_data *data, void *user_data) {
     };
 
     // Only parse manufacturer-specific data
-    if (data->type != BT_DATA_MANUFACTURER_DATA || data->data_len < 24) return true;
+    if (data->type != BT_DATA_MANUFACTURER_DATA || data->data_len < 25) return true;
 
     const uint8_t *payload = data->data;
 
@@ -132,14 +126,12 @@ static bool adv_data_cb(struct bt_data *data, void *user_data) {
     if (memcmp(&payload[4], expected_uuid, 16) != 0) return true;
 
     // Unpack values
-
     temp = (payload[MAJOR_OFFSET] << 8) | payload[MAJOR_OFFSET + 1];
     clap = payload[MINOR_OFFSET + 1];
+    light = (int8_t)payload[ORIGINAL_RSSI_OFFSET];
 
 
-    printk("Received - Temp: %d, Clap: %d\n", temp, clap);
-
-
+    printk("Received - Temp: %d, Clap: %d, Light: %d\n", temp, clap, light);
     return false;  // Stop parsing further
 }
 

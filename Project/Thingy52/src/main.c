@@ -54,7 +54,6 @@ static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 #define LIGHT_WHITE 0x56
 #define LIGHT_SYS_CTRL 0x40
 #define LIGHT_MODECTL1 0x41
-uint16_t white_light_lux;
 
 const struct device *bh1745 = DEVICE_DT_GET(DT_NODELABEL(i2c0));
 
@@ -67,6 +66,7 @@ const struct device *bh1745 = DEVICE_DT_GET(DT_NODELABEL(i2c0));
 struct values {
 	uint16_t temp;
 	uint8_t clap;
+	uint16_t light;
 };
 
 struct values shared_data = {0};
@@ -84,12 +84,9 @@ static struct k_thread light_thread_data;
 
 static int do_pdm_transfer(const struct device *dmic_dev,
 			   struct dmic_cfg *cfg,
-			   size_t block_count,
-			   struct values *data)
+			   size_t block_count)
 {
 	int ret;
-	
-	data->clap = 0; // reset clap flag
 
 	ret = dmic_configure(dmic_dev, cfg);
 	if (ret < 0) {
@@ -129,7 +126,14 @@ static int do_pdm_transfer(const struct device *dmic_dev,
 			if ((abs(samples[i]) > 10000) && (i != 32)) {
 				LOG_INF("Clap at sample %d", i);
 				// update clap
-				data->clap = 1;
+				k_mutex_lock(&data_lock, K_FOREVER);
+				if (shared_data.clap) {
+					shared_data.clap = 0;
+				} else {
+					shared_data.clap = 1;
+				}
+				k_mutex_unlock(&data_lock);
+				break;
 			}
 		}
 
@@ -170,15 +174,16 @@ static void advertise_thingy(struct values data) {
         0x19, 0xEE, 0x15, 0x16, 0x01, 0x6B, 0x4B, 0xEC, // UUID part 1 (example)
         0xAD, 0x96, 0xBC, 0xB9, 0x6D, 0x16, 0x6E, 0x97, // UUID part 2 (example)
         0x00, 0x00, 0x00, 0x00,                         // Major / Minor placeholder
-        0xC8                                            // TX Power (example value)
+        0xC8,                                           // TX Power (example value)
+		0x00
     };
 
-
-	printk("Packing BLE Data - Temp: %d, Clap Detected: %s\n",
-       data.temp, data.clap ? "YES" : "NO");
+	printk("Packing BLE Data - Temp: %d, Clap Detected: %d\n",
+       data.temp, data.clap);
 
 	sys_put_be16(data.temp, &beacon_data[MAJOR_OFFSET]);
 	sys_put_be16(data.clap, &beacon_data[MINOR_OFFSET]);
+	beacon_data[ORIGINAL_RSSI_OFFSET] = (uint8_t)data.light;
 
     struct bt_data ad[] = {
         BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_NO_BREDR),
@@ -198,7 +203,10 @@ static void advertise_thingy(struct values data) {
 		printk("\n");
 	}
 
-
+	k_mutex_lock(&data_lock, K_FOREVER);
+	shared_data.clap = 0;
+	k_mutex_unlock(&data_lock);
+	
     k_sleep(K_MSEC(20));
     bt_le_adv_stop();
 }
@@ -209,12 +217,9 @@ void clap_thread_fn(void *dmic_dev_ptr, void *cfg_ptr, void *unused) {
     struct dmic_cfg *cfg = cfg_ptr;
 
     while (1) {
-        struct values local = {0};
 
-        if (do_pdm_transfer(dmic_dev, cfg, BLOCK_COUNT, &local) == 0) {
-            k_mutex_lock(&data_lock, K_FOREVER);
-            shared_data.clap = local.clap;
-            k_mutex_unlock(&data_lock);
+        if (!(do_pdm_transfer(dmic_dev, cfg, BLOCK_COUNT) == 0)) {
+			LOG_ERR("DMIC read failed");
         }
 
         k_msleep(10); // Sampling interval
@@ -240,15 +245,19 @@ void light_thread_fn(void *arg1, void *arg2, void *arg3) {
 	int ret;
     while (1) {
 		uint8_t buf[2];
+		struct values local = {0};
     	ret = i2c_burst_read(bh1745, I2C_ADDRESS, LIGHT_WHITE, buf, 2);
 		if (ret) {
 			LOG_ERR("Failed to read light sensor");
 		}
 
 		// Lux of white light
-		white_light_lux = (buf[1] << 8) | buf[0];
-        white_light_lux = (uint8_t)(white_light_lux * 0.4f * 100);
-		LOG_INF("Let there be light! %u", white_light_lux);
+		local.light = (buf[1] << 8) | buf[0];
+        local.light = (uint8_t)(local.light * 0.4f);
+		k_mutex_lock(&data_lock, K_FOREVER);
+        shared_data.temp = local.light;
+        k_mutex_unlock(&data_lock);
+		LOG_INF("Let there be light! %u", local.light);
         k_sleep(K_SECONDS(5));  // Sample less frequently
     }
 }
