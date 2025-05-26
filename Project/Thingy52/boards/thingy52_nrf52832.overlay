@@ -15,20 +15,12 @@ dmic_dev: &pdm0 {
 
 
 &i2c0 {
-    apds9960: apds9960@68 {
-        compatible = "avago,apds9960";
-        reg = <0x68>;
-        int-gpios = <&gpio0 23 GPIO_ACTIVE_HIGH>;  // Replace with an available GPIO
-        label = "APDS9960";
+    bh1745: bh1745@38 {
+        reg = <0x38>;
+        power-gpios = <&gpio0 30 GPIO_ACTIVE_HIGH>;
+        label = "BH1745";
         status = "okay";
     };
-};
-
-
-
-
-&apds9960 {
-    status = "okay";
 };
 
 &sx1509b {
@@ -48,8 +40,6 @@ dmic_dev: &pdm0 {
 
 / {
     aliases {
-        temphum = &hts221;
-        light = &apds9960;
-		
+        temphum = &hts221;	
     };
 };

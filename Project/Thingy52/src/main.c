@@ -50,8 +50,13 @@ static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 #define ORIGINAL_RSSI_OFFSET 25
 
 // Constants for light sensor
-#define SLAVE_ADDRESS 0x38
+#define I2C_ADDRESS 0x38
+#define LIGHT_WHITE 0x56
+#define LIGHT_SYS_CTRL 0x40
+#define LIGHT_MODECTL1 0x41
+uint16_t white_light_lux;
 
+const struct device *bh1745 = DEVICE_DT_GET(DT_NODELABEL(i2c0));
 
 #define STACK_SIZE 2048
 #define PRIORITY_CLAP 1
@@ -232,7 +237,18 @@ void temp_thread_fn(void *arg1, void *arg2, void *arg3) {
 
 // Light Sensor Thread
 void light_thread_fn(void *arg1, void *arg2, void *arg3) {
+	int ret;
     while (1) {
+		uint8_t buf[2];
+    	ret = i2c_burst_read(bh1745, I2C_ADDRESS, LIGHT_WHITE, buf, 2);
+		if (ret) {
+			LOG_ERR("Failed to read light sensor");
+		}
+
+		// Lux of white light
+		white_light_lux = (buf[1] << 8) | buf[0];
+        white_light_lux = (uint8_t)(white_light_lux * 0.4f * 100);
+		LOG_INF("Let there be light! %u", white_light_lux);
         k_sleep(K_SECONDS(5));  // Sample less frequently
     }
 }
@@ -318,6 +334,28 @@ int main(void)
 	cfg.streams[0].pcm_rate = MAX_SAMPLE_RATE;
 	cfg.streams[0].block_size =
 		BLOCK_SIZE(cfg.streams[0].pcm_rate, cfg.channel.req_num_chan);
+	
+
+	// Initialise the light sensor
+	if (!device_is_ready(bh1745)) {
+		LOG_ERR("%s is not ready", dmic_dev->name);
+		return 0;
+	}
+
+	// Configure directly with I2C
+	uint8_t buf[2];
+	buf[0] = LIGHT_SYS_CTRL;
+	buf[1] = 0x80;
+	i2c_write(bh1745, buf, 2, I2C_ADDRESS);
+	k_msleep(2);
+	buf[0] = LIGHT_SYS_CTRL;
+	buf[1] = 0x00;
+    i2c_write(bh1745, buf, 2, I2C_ADDRESS);
+
+	uint8_t config[] = {LIGHT_MODECTL1, 0x00,
+                     0x10,
+                     0x02};
+    i2c_write(bh1745, config, sizeof(cfg), I2C_ADDRESS);
 
 	k_mutex_init(&data_lock);
 
@@ -337,7 +375,6 @@ int main(void)
 	k_thread_create(&ble_thread_data, ble_stack, STACK_SIZE,
 					ble_thread_fn, NULL, NULL, NULL,
 					PRIORITY_BLE, 0, K_NO_WAIT);
-
 
 	LOG_INF("Exiting");
 	return 0;
