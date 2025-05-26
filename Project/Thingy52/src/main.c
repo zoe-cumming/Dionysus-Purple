@@ -54,9 +54,10 @@ static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 
 
 #define STACK_SIZE 2048
-#define PRIORITY_CLAP -1
-#define PRIORITY_TEMP 0
-#define PRIORITY_BLE 1
+#define PRIORITY_CLAP 1
+#define PRIORITY_TEMP 3
+#define PRIORITY_BLE 3
+#define PRIORITY_LIGHT 3
 
 struct values {
 	uint16_t temp;
@@ -225,6 +226,13 @@ void temp_thread_fn(void *arg1, void *arg2, void *arg3) {
         shared_data.temp = local.temp;
         k_mutex_unlock(&data_lock);
 
+        k_sleep(K_SECONDS(5));  // Sample less frequently
+    }
+}
+
+// Light Sensor Thread
+void light_thread_fn(void *arg1, void *arg2, void *arg3) {
+    while (1) {
         k_sleep(K_SECONDS(5));  // Sample less frequently
     }
 }
