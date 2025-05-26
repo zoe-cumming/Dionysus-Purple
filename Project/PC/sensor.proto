@@ -1,0 +1,8 @@
+// sensor.proto
+syntax = "proto2";
+
+message SensorData {
+    required uint32 temp = 1;
+    required uint32 light = 2;
+    required uint32 clap = 3;
+}
