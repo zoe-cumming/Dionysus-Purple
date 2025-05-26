@@ -120,7 +120,7 @@ static int do_pdm_transfer(const struct device *dmic_dev,
 		// Detect clap
 		for (size_t i = 0; i < sample_count; ++i) {
 			if (abs(samples[i]) > 10000) {
-				//LOG_INF("Clap at sample %d", i);
+				LOG_INF("Clap at sample %d", i);
 				// update clap
 				data->clap = 1;
 
@@ -212,7 +212,7 @@ void clap_thread_fn(void *dmic_dev_ptr, void *cfg_ptr, void *unused) {
             k_mutex_unlock(&data_lock);
         }
 
-        k_msleep(500); // Sampling interval
+        k_msleep(20); // Sampling interval
     }
 }
 
