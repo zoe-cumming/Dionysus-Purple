@@ -15,7 +15,7 @@ IMAGE_PATH5 = 'actual_images/five.jpg'
 
 
 # Load model
-model = tf.keras.models.load_model('gesture_model1.keras')
+model = tf.keras.models.load_model('gesture_model2.keras')
 
 # Define label map manually (based on training folders)
 labels = ['0', '1', '2', '3', '4', '5']
