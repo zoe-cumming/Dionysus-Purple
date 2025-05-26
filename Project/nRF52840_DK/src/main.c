@@ -307,6 +307,7 @@ int main(void)
         // //print_to_serial();
         nanopb_encode_and_print();
         nanopb_decode_and_print(test_encoded_buffer, test_encoded_len);
+        
         //if clap, switch light
         if (clap == 1) {
              toggle_light();
