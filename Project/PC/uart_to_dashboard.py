@@ -43,7 +43,7 @@ print("Connected to serial port...")
 last = time.time()
 
 ##################################################
-# Update the deshboard ever 2 seconds
+# Update the dashboard ever 2 seconds
 ##################################################
 while True:
     while(time.time() - last < 2):
