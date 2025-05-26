@@ -57,8 +57,8 @@ def recv_exact(sock, size, timeout=5):
 # Display the images using cv2
 ################################################
 def main():
-    # frame_count = 0 
-    # os.makedirs("images", exist_ok=True)
+    frame_count = 160
+    os.makedirs("images", exist_ok=True)
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect((HOST, PORT))
     print(f"Connected to {HOST}:{PORT}")
@@ -78,9 +78,9 @@ def main():
         cv2.imshow("ESP32 Frame", cv2.resize(bgr_img, (480, 480), interpolation=cv2.INTER_NEAREST))
 
         # Save the images
-        # filename = f"images/frame_{frame_count:04d}.png"
-        # cv2.imwrite(filename, bgr_img)
-        # frame_count += 1
+        filename = f"images/frame_{frame_count:04d}.png"
+        cv2.imwrite(filename, bgr_img)
+        frame_count += 1
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break

@@ -18,8 +18,6 @@
 #include <pb_encode.h>
 #include <pb_decode.h>
 
-
-
 #define MAJOR_OFFSET 20
 #define MINOR_OFFSET 22
 
@@ -31,7 +29,8 @@ int data_pin;
 
 #define LED_CLK_NODE DT_ALIAS(rgbclk)
 #define LED_DATA_NODE DT_ALIAS(rgbdata)
-
+static bool light_on = false;
+static bool sensors_on = true;
 
 // Define RGB values for the 8 primary colours
 // colours set by R, G, B, intensity (as on-255 or off-0)
@@ -46,11 +45,8 @@ static const uint8_t COLOURS[][3] = {
     {255, 255, 255} // White
 };
 
-
-
 uint16_t temp;
 uint16_t clap;
-
 
 struct json_data {
     int temp;
@@ -61,13 +57,11 @@ struct json_data {
 static uint8_t test_encoded_buffer[64];
 static size_t test_encoded_len;
 
-
 static const struct json_obj_descr data_struct[] = {
     JSON_OBJ_DESCR_PRIM(struct json_data, temp, JSON_TOK_NUMBER),
     JSON_OBJ_DESCR_PRIM(struct json_data, light, JSON_TOK_NUMBER),
     JSON_OBJ_DESCR_PRIM(struct json_data, clap, JSON_TOK_NUMBER),
 };
-
 
 extern void json_print(int major, int value) {
     char json_output[256];
@@ -91,23 +85,25 @@ extern void json_print(int major, int value) {
 }
 
 void nanopb_encode_and_print(void) {
-    SensorData data = SensorData_init_zero;
-    data.temp = temp;
-    data.clap = clap;
+    if (sensors_on) {
+        SensorData data = SensorData_init_zero;
+        data.temp = temp;
+        data.clap = clap;
 
-    pb_ostream_t stream = pb_ostream_from_buffer(test_encoded_buffer, sizeof(test_encoded_buffer));
+        pb_ostream_t stream = pb_ostream_from_buffer(test_encoded_buffer, sizeof(test_encoded_buffer));
 
-    if (!pb_encode(&stream, SensorData_fields, &data)) {
-        printk("Nanopb encoding failed: %s\n", PB_GET_ERROR(&stream));
-        return;
+        if (!pb_encode(&stream, SensorData_fields, &data)) {
+            printk("Nanopb encoding failed: %s\n", PB_GET_ERROR(&stream));
+            return;
+        }
+
+        test_encoded_len = stream.bytes_written;
+        printk("Nanopb Encoded SensorData (%d bytes): ", test_encoded_len);
+        for (size_t i = 0; i < test_encoded_len; i++) {
+            printk("%02X ", test_encoded_buffer[i]);
+        }
+        printk("\n");
     }
-
-    test_encoded_len = stream.bytes_written;
-    printk("Nanopb Encoded SensorData (%d bytes): ", test_encoded_len);
-    for (size_t i = 0; i < test_encoded_len; i++) {
-        printk("%02X ", test_encoded_buffer[i]);
-    }
-    printk("\n");
 }
 
 void nanopb_decode_and_print(const uint8_t *buffer, size_t len) {
@@ -124,10 +120,7 @@ void nanopb_decode_and_print(const uint8_t *buffer, size_t len) {
     printk("  Clap: %d\n", data.clap);
 }
 
-
-
 static bool adv_data_cb(struct bt_data *data, void *user_data) {
-
 
     static const uint8_t expected_uuid[16] = {
         0x19, 0xEE, 0x15, 0x16, 0x01, 0x6B, 0x4B, 0xEC,
@@ -146,13 +139,10 @@ static bool adv_data_cb(struct bt_data *data, void *user_data) {
     if (memcmp(&payload[4], expected_uuid, 16) != 0) return true;
 
     // Unpack values
-
     temp = (payload[MAJOR_OFFSET] << 8) | payload[MAJOR_OFFSET + 1];
     clap = payload[MINOR_OFFSET + 1];
 
-
     printk("Received - Temp: %d, Clap: %d\n", temp, clap);
-
 
     return false;  // Stop parsing further
 }
@@ -214,8 +204,6 @@ void reset_leds(void) {
 
 // Toggle between OFF (black) and ON (white)
 void toggle_light(void) {
-    static bool light_on = false;
-
     if (light_on) {
         send_colour(0, 0, 0);  // Off (black)
         printk("Toggled LED OFF\n");
@@ -232,10 +220,7 @@ void toggle_light(void) {
 // debug
 void light_off(void) {
 
-    int index = 0;
-    
-    //send_colour(0, 0, 0);  // Off (black)
-    
+    int index = 0;    
     
     printk("Sending colour: R=%d, G=%d, B=%d\n", COLOURS[index][0], COLOURS[index][1], COLOURS[index][2]);
 
@@ -292,8 +277,6 @@ int main(void)
     gpio_pin_configure(clk_dev, clk_pin, GPIO_OUTPUT_ACTIVE);
     gpio_pin_configure(data_dev, data_pin, GPIO_OUTPUT_ACTIVE);
 
-   
-
     reset_leds();
 
     // init time
@@ -302,11 +285,10 @@ int main(void)
     while (1) {
         //k_msleep(20);
 
-
         bt_le_scan_stop();
         // //print_to_serial();
         nanopb_encode_and_print();
-        nanopb_decode_and_print(test_encoded_buffer, test_encoded_len);
+        // nanopb_decode_and_print(test_encoded_buffer, test_encoded_len);
         
         //if clap, switch light
         if (clap == 1) {
@@ -321,13 +303,70 @@ int main(void)
         //     toggle_light();  // Toggle the LED
         //     last_toggle_time = now;
         // }
-    
-        bt_le_scan_start(&scan_params, device_found);
 
-         
-        
+        bt_le_scan_start(&scan_params, device_found);
 
     }
 
     return 0;
 }
+
+/* 
+ * Shell command to turn sensors on/off
+ */
+static int sensors_cli(const struct shell *sh, size_t argc, char **argv)
+{
+    if ((argc == 3) && (0 == strcmp(argv[1], "power"))) {
+        if (0 == strcmp(argv[2], "on")) {
+            if (sensors_on) {
+                shell_print(sh, "Sensors already on");
+            } else {
+                sensors_on = true;
+                shell_print(sh, "Turning sensors on");
+            }
+        }
+        else if (0 == strcmp(argv[2], "off")) {
+            if (sensors_on) {
+                sensors_on = false;
+                shell_print(sh, "Turning sensors off");
+            } else {
+                shell_print(sh, "Sensors already off");
+            }
+        }
+        else {
+            shell_print(sh, "Invalid Sensor Command");
+            return -1;
+        }
+        return 0;
+    } else {
+        shell_print(sh, "Invalid Sensor Command");
+        return -1;
+    }
+}
+
+/* 
+ * Shell command to turn lights on/off
+ */
+static int lights_cli(const struct shell *sh, size_t argc, char **argv)
+{
+    if ((argc == 2) && (0 == strcmp(argv[1], "on"))) {
+        if (!light_on) {
+            toggle_light();
+            shell_print(sh, "Turning lights on");
+        } 
+        shell_print(sh, "Lights already on");
+    } else if ((argc == 2) && (0 == strcmp(argv[1], "off"))) {
+        if (light_on) {
+            toggle_light();
+            shell_print(sh, "Turning lights off");
+        }
+        shell_print(sh, "Lights already off");
+    } else {
+        shell_print(sh, "Invalid Light Command");
+        return -1;
+    }
+}
+
+// Define shell commands for CLI
+SHELL_CMD_ARG_REGISTER(sensors, NULL, "sensors power on\nsensors power off\n", sensors_cli, 3, 0);
+SHELL_CMD_ARG_REGISTER(lights, NULL, "lights on\nlights off\n", lights_cli, 2, 0);
