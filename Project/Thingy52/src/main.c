@@ -47,7 +47,6 @@ static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 #define MINOR_OFFSET 22
 #define TX_POWER_OFFSET 24
 #define IBEACON_EXPECTED_LEN 25
-#define ORIGINAL_RSSI_OFFSET 25
 
 // Constants for light sensor
 #define I2C_ADDRESS 0x38
@@ -174,8 +173,7 @@ static void advertise_thingy(struct values data) {
         0x19, 0xEE, 0x15, 0x16, 0x01, 0x6B, 0x4B, 0xEC, // UUID part 1 (example)
         0xAD, 0x96, 0xBC, 0xB9, 0x6D, 0x16, 0x6E, 0x97, // UUID part 2 (example)
         0x00, 0x00, 0x00, 0x00,                         // Major / Minor placeholder
-        0xC8,                                           // TX Power (example value)
-		0x00
+        0xC8                                            // TX Power (example value)
     };
 
 	printk("Packing BLE Data - Temp: %d, Clap Detected: %d\n",
@@ -183,7 +181,7 @@ static void advertise_thingy(struct values data) {
 
 	sys_put_be16(data.temp, &beacon_data[MAJOR_OFFSET]);
 	sys_put_be16(data.clap, &beacon_data[MINOR_OFFSET]);
-	beacon_data[ORIGINAL_RSSI_OFFSET] = (uint8_t)data.light;
+	beacon_data[TX_POWER_OFFSET] = (uint8_t)data.light;
 
     struct bt_data ad[] = {
         BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_NO_BREDR),
@@ -206,7 +204,7 @@ static void advertise_thingy(struct values data) {
 	k_mutex_lock(&data_lock, K_FOREVER);
 	shared_data.clap = 0;
 	k_mutex_unlock(&data_lock);
-	
+
     k_sleep(K_MSEC(20));
     bt_le_adv_stop();
 }
@@ -255,7 +253,7 @@ void light_thread_fn(void *arg1, void *arg2, void *arg3) {
 		local.light = (buf[1] << 8) | buf[0];
         local.light = (uint8_t)(local.light * 0.4f);
 		k_mutex_lock(&data_lock, K_FOREVER);
-        shared_data.temp = local.light;
+        shared_data.light = local.light;
         k_mutex_unlock(&data_lock);
 		LOG_INF("Let there be light! %u", local.light);
         k_sleep(K_SECONDS(5));  // Sample less frequently
@@ -272,7 +270,7 @@ void ble_thread_fn(void *arg1, void *arg2, void *arg3) {
         k_mutex_unlock(&data_lock);
 
         advertise_thingy(copy);
-        k_sleep(K_SECONDS(5));
+        k_sleep(K_SECONDS(1));
     }
 }
 

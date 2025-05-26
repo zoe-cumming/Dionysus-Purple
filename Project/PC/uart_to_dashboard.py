@@ -18,8 +18,11 @@ def decode_nanopb(line):
         data.ParseFromString(hex_values)
 
         array[0] = data.temp
+        print(array[0] / 100)
         array[1] = data.light
+        print(array[1])
         array[2] = data.clap
+        print(array[2])
 
     except Exception as e:
         print("[ERROR] Failed to parse line:", e)
@@ -40,16 +43,14 @@ client = InfluxDBClient3(
 ##################################################
 ser = serial.Serial('/dev/ttyACM0', 115200)
 print("Connected to serial port...")
-last = time.time()
 
 ##################################################
 # Update the dashboard ever 2 seconds
 ##################################################
 while True:
-    while(time.time() - last < 2):
-        pass
     try:
         data = ser.readline().decode('utf-8').strip()
+        print(data)
         result = decode_nanopb(data)
         
         # Prepare the data point for InfluxDB
@@ -60,7 +61,7 @@ while True:
             .field("Light On/Off", array[2])          
         
         # Write the point to InfluxDB
-        client.write(point)
+        #client.write(point) # NOT WORKING ATM
         print(f"Wrote data to InfluxDB")
         last = time.time()
 

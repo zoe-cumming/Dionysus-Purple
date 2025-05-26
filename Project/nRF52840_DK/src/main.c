@@ -20,7 +20,8 @@
 
 #define MAJOR_OFFSET 20
 #define MINOR_OFFSET 22
-#define ORIGINAL_RSSI_OFFSET 25
+#define TX_POWER_OFFSET 24
+#define IBEACON_EXPECTED_LEN 25
 
 // for light
 const struct device *clk_dev;
@@ -40,6 +41,9 @@ struct json_data {
     int light;
     int clap;
 };
+
+static bool light_on = false;
+static bool sensors_on = true;
 
 static uint8_t test_encoded_buffer[64];
 static size_t test_encoded_len;
@@ -74,7 +78,7 @@ extern void json_print(int major, int value) {
 void nanopb_encode_and_print(void) {
     SensorData data = SensorData_init_zero;
     data.temp = temp;
-    data.clap = clap;
+    data.clap = light_on;
     data.light = light;
 
     pb_ostream_t stream = pb_ostream_from_buffer(test_encoded_buffer, sizeof(test_encoded_buffer));
@@ -103,11 +107,11 @@ void nanopb_decode_and_print(const uint8_t *buffer, size_t len) {
 
     printk("Decoded SensorData:\n");
     printk("  Temp: %d\n", data.temp);
-    printk("  Clap: %d\n", data.clap);
+    printk("  Light on: %d\n", data.clap);
+    printk("  Light: %d\n", data.light);
 }
 
 static bool adv_data_cb(struct bt_data *data, void *user_data) {
-
 
     static const uint8_t expected_uuid[16] = {
         0x19, 0xEE, 0x15, 0x16, 0x01, 0x6B, 0x4B, 0xEC,
@@ -115,7 +119,7 @@ static bool adv_data_cb(struct bt_data *data, void *user_data) {
     };
 
     // Only parse manufacturer-specific data
-    if (data->type != BT_DATA_MANUFACTURER_DATA || data->data_len < 25) return true;
+    if (data->type != BT_DATA_MANUFACTURER_DATA || data->data_len < IBEACON_EXPECTED_LEN) return true;
 
     const uint8_t *payload = data->data;
 
@@ -128,10 +132,9 @@ static bool adv_data_cb(struct bt_data *data, void *user_data) {
     // Unpack values
     temp = (payload[MAJOR_OFFSET] << 8) | payload[MAJOR_OFFSET + 1];
     clap = payload[MINOR_OFFSET + 1];
-    light = (int8_t)payload[ORIGINAL_RSSI_OFFSET];
+    light = (int8_t)payload[TX_POWER_OFFSET] * 100;
 
-
-    printk("Received - Temp: %d, Clap: %d, Light: %d\n", temp, clap, light);
+    // printk("Received - Temp: %d, Clap: %d, Light: %d\n", temp, clap, light);
     return false;  // Stop parsing further
 }
 
@@ -187,7 +190,6 @@ void send_colour(uint8_t red, uint8_t green, uint8_t blue) {
 
 // Toggle between OFF (black) and ON (white)
 void toggle_light(void) {
-    static bool light_on = false;
 
     if (light_on) {
         send_colour(0, 0, 0);  // Off (black)
@@ -240,14 +242,18 @@ int main(void)
     gpio_pin_configure(clk_dev, clk_pin, GPIO_OUTPUT_ACTIVE);
     gpio_pin_configure(data_dev, data_pin, GPIO_OUTPUT_ACTIVE);
 
+    int64_t print_time = k_uptime_get();
 
     while (1) {
         k_msleep(20);
 
         bt_le_scan_stop();
         //print_to_serial();
-        nanopb_encode_and_print();
-        nanopb_decode_and_print(test_encoded_buffer, test_encoded_len);
+        if ((k_uptime_get() - print_time) >= 2000) {
+            nanopb_encode_and_print();
+            // nanopb_decode_and_print(test_encoded_buffer, test_encoded_len);
+            print_time = k_uptime_get();
+        }
         //if clap, switch light
         if (clap == 1) {
             toggle_light();
@@ -255,10 +261,6 @@ int main(void)
         }
 
         bt_le_scan_start(&scan_params, device_found);
-
-         
-        
-
     }
 
     return 0;
@@ -295,6 +297,7 @@ static int sensors_cli(const struct shell *sh, size_t argc, char **argv)
         shell_print(sh, "Invalid Sensor Command");
         return -1;
     }
+    return -1;
 }
 
 /* 
@@ -318,6 +321,7 @@ static int lights_cli(const struct shell *sh, size_t argc, char **argv)
         shell_print(sh, "Invalid Light Command");
         return -1;
     }
+    return -1;
 }
 
 // Define shell commands for CLI
