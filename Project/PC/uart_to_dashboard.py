@@ -4,7 +4,11 @@ import time
 import serial
 import sensor_pb2
 
-array = [0.0] * 3
+array = [0] * 4
+array[2] = "OFF"
+array[1] = 200
+array[3] = 4
+array[0] = 30
 
 ##################################################
 # Decode the NanoPB package
@@ -19,10 +23,19 @@ def decode_nanopb(line):
 
         array[0] = data.temp
         print(array[0] / 100)
+        
         array[1] = data.light
         print(array[1])
-        array[2] = data.clap
+        
+        if data.clap == 1:
+            #Light is on:
+            array[2] = "ON"
+        else:
+            array[2] = "OFF"
         print(array[2])
+        
+        array[3] = data.fan
+        print(array[3])        
 
     except Exception as e:
         print("[ERROR] Failed to parse line:", e)
@@ -35,7 +48,7 @@ client = InfluxDBClient3(
     token="uuTqUJ_ayx7z_eLScuL4-uh1RIY1d4Wm_VtPRcyrvny1tZp2fL2zQZr4NawIQs_3zeXeZc9MaCIgNFmTTSFZig==",
     host = "https://us-east-1-1.aws.cloud2.influxdata.com",
     org = "e50a638ee5109a61",
-    database = "PROJECT",
+    database = "dash",
 )
 
 ##################################################
@@ -54,14 +67,15 @@ while True:
         result = decode_nanopb(data)
         
         # Prepare the data point for InfluxDB
-        point = Point("PROJECT") \
+        point = Point("dash") \
             .tag("node", "project") \
             .field("Temperature", array[0]) \
-            .field("Light", array[1]) \
-            .field("Light On/Off", array[2])          
+            .field("Intensity", array[1]) \
+            .field("Light", array[2]) \
+            .field("Fan", array[3])           
         
         # Write the point to InfluxDB
-        #client.write(point) # NOT WORKING ATM
+        client.write(point) # NOT WORKING ATM
         print(f"Wrote data to InfluxDB")
         last = time.time()
 
@@ -69,4 +83,4 @@ while True:
         print(f"Error reading from serial port or writing to InfluxDB: {e}")
         break
 
-ser.close()
+#ser.close()
