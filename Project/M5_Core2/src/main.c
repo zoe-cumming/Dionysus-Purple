@@ -304,6 +304,7 @@ static int mqtt_publish_message(const char *topic, const char *message)
     printk("Published message: %s to topic: %s\n", message, topic);
     return 0;
 }
+
 // Called when the WiFi is connected
 static void on_wifi_connection_event(struct net_mgmt_event_callback *cb,
                                      uint32_t mgmt_event,
@@ -541,6 +542,8 @@ int main(void)
         }    
 
         lv_task_handler();
+        mqtt_input(&client);
+        mqtt_live(&client);
         k_msleep(1000);
     }
 

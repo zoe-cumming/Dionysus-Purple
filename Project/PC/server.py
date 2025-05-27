@@ -6,7 +6,7 @@ import time
 
 broker = 'broker.emqx.io'
 port = 1883
-topic = 'python/mqtt'
+topic = 'python/pc'
 #client_id = f'python-mqtt-{random.randint(0, 1000)}'
 client_id = 'zephyr_subscriber'
 username = 'emqx'
@@ -43,7 +43,7 @@ def publish(client):
     while True:
         time.sleep(2)
         #msg = f"messages: {msg_count}"
-        msg = "Temp: 30, Lights: 1, Fan: 4"
+        msg = "3"
         result = client.publish(topic, msg)
         # result: [0, 1]
         status = result.rc

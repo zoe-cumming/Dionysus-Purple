@@ -6,7 +6,8 @@ import time
 
 broker = 'broker.emqx.io'
 port = 1883
-topic = 'python/mqtt'
+rec_topic = 'python/pc'
+send_topic = 'python/mqtt'
 client_id = f'python-mqtt-{random.randint(0, 1000)}'
 username = 'emqx'
 password = 'public'
@@ -27,27 +28,38 @@ def connect_mqtt():
 
 def subscribe(client: mqtt_client):
     def on_message(client, userdata, msg):
-        print(f"Received `{msg.payload.decode()}` from `{msg.topic}` topic")
+        received = msg.payload.decode()
+        print(f"Received `{received}` from `{msg.topic}` topic")
+        #publish(client)
+        #msg = f"messages: {msg_count}"
+        msg = f"Temp: 10, Lights: 0, Fan: {received}"
+        result = client.publish(send_topic, msg)
+        # result: [0, 1]
+        status = result.rc
+        if status == 0:
+           print(f"Send `{msg}` to topic `{send_topic}`")
+        else:
+           print(f"Failed to send message to topic {send_topic}")
 
-    client.subscribe(topic, qos=0)
+    client.subscribe(rec_topic, qos=0)
     client.on_message = on_message
 
 def unsubscribe(client: mqtt_client):
     client.on_message = None
-    client.unsubscribe(topic)
+    client.unsubscribe(rec_topic)
 
 def publish(client):
     msg_count = 0
     while True:
         time.sleep(1)
         msg = f"messages: {msg_count}"
-        result = client.publish(topic, msg)
+        result = client.publish(send_topic, msg)
         # result: [0, 1]
         status = result.rc
         if status == 0:
-           print(f"Send `{msg}` to topic `{topic}`")
+           print(f"Send `{msg}` to topic `{send_topic}`")
         else:
-           print(f"Failed to send message to topic {topic}")
+           print(f"Failed to send message to topic {send_topic}")
         msg_count += 1
 
 def disconnect(client: mqtt_client):

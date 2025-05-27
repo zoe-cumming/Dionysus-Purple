@@ -34,7 +34,7 @@ READY_SIZE = 5
 # Define MQTT constants
 broker = 'broker.emqx.io'
 port = 1883
-topic = 'python/mqtt'
+topic = 'python/pc'
 client_id = 'zephyr_subscriber'
 username = 'emqx'
 password = 'public'
@@ -183,19 +183,21 @@ def on_message(client, userdata, msg):
 # Thread to handle MQTT connection and publishing
 ##################################################
 def mqtt_sender(pred_queue):
-    msg_count = 0
     client = connect_mqtt()
     client.loop_start()
+    last = time.time()
     while True:
-        predicted_class = pred_queue.get()
-        msg = f"Temp: 30, Lights: 1, Fan: {predicted_class}"
-        result = client.publish(topic, msg)
-        status = result.rc
-        if status == 0:
-           print(f"Send `{msg}` to topic `{topic}`")
-        else:
-           print(f"Failed to send message to topic {topic}")
-        msg_count += 1
+        #predicted_class = pred_queue.get()
+        #msg = f"{predicted_class}"
+        msg = '3'
+        if (time.time() - last > 2):
+            result = client.publish(topic, msg)
+            status = result.rc
+            if status == 0:
+                print(f"Send `{msg}` to topic `{topic}`")
+            else:
+                print(f"Failed to send message to topic {topic}")
+            last = time.time()
 
 if __name__ == "__main__":
     t1 = threading.Thread(target=tcp_receiver, args=(frame_queue,))

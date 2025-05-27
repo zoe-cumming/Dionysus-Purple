@@ -59,6 +59,7 @@ int main(void)
     if (ret < 0) {
         printk("Error configuring trigger pin: %d\n", ret);
         return 1;
+        
     }
 
     gpio_pin_set(gpio_dev, ONE, 1);

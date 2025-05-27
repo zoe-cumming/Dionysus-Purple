@@ -28,8 +28,8 @@
 #define MAX_RANGE_TIMEOUT_US 40000 // CHANGE THIS VALUE?
 
 // WiFi settings
-#define WIFI_SSID "Super6"
-#define WIFI_PSK "L10n5Br0nc05?"// CONFIGURE
+#define WIFI_SSID "Zoe"
+#define WIFI_PSK "z0chYo15"// CONFIGURE
 #define HIVEMQ_HOSTNAME "broker.emqx.io"
 #define BROKER_IP "44.232.241.40"
 #define HIVEMQ_PORT 1883
@@ -138,7 +138,7 @@ static int resolve_dns(void)
 
 static void mqtt_evt_handler(struct mqtt_client *client, const struct mqtt_evt *evt)
 {
-    int temp, fan, lights;
+    int temp = 0, fan = 0, lights = 0;
     
     switch (evt->type) {
     case MQTT_EVT_CONNACK:
@@ -169,6 +169,20 @@ static void mqtt_evt_handler(struct mqtt_client *client, const struct mqtt_evt *
                    p->message.topic.topic.size,
                    p->message.topic.topic.utf8,
                    rx_buff);
+            char *token = strtok(rx_buff, ",");
+            
+            while (token) {
+                if (strstr(token, "Temp:"))
+                    temp = atoi(token + 6);
+                else if (strstr(token, "Lights:"))
+                    lights = atoi(token + 8);
+                else if (strstr(token, "Fan:"))
+                    fan = atoi(token + 6);
+                token = strtok(NULL, ",");
+            }
+
+            printk("Fan Speed: %d", fan);
+            //Drive the servo
         }
         break;
     default:
@@ -465,6 +479,7 @@ void ultra_thread(void *arg1, void *arg2, void *arg3) {
 
     while (1) {
         timeout_occurred = 0;
+        printk("running...");
 
         // Send 10us trigger pulse
         gpio_pin_set(gpio_dev, TRIG_PIN, 1);

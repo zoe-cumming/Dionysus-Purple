@@ -1,14 +1,67 @@
 from influxdb_client_3 import InfluxDBClient3, Point
+from paho.mqtt import client as mqtt_client
 import json
 import time
 import serial
 import sensor_pb2
+import threading
 
+TEMP = 0
+INTENSITY = 1
+LIGHTS = 2
+FAN = 3
 array = [0] * 4
-array[2] = "OFF"
-array[1] = 200
-array[3] = 4
-array[0] = 30
+
+# TESTING PURPOSES
+array[LIGHTS] = "OFF"
+array[INTENSITY] = 200
+array[FAN] = 4
+array[TEMP] = 30
+
+broker = 'broker.emqx.io'
+port = 1883
+rec_topic = 'python/pc'
+send_topic = 'python/mqtt'
+client_id = f'python-mqtt-UART'
+username = 'emqx'
+password = 'public'
+
+def connect_mqtt():
+    def on_connect(client, userdata, flags, reason_code, properties):
+        if reason_code == 0:
+            print("Connected to MQTT Broker!")
+        else:
+            print(f"Failed to connect, return code {reason_code}")
+
+    # Specify the correct callback API version (v5 is default)
+    client = mqtt_client.Client(client_id=client_id, protocol=mqtt_client.MQTTv5)
+    client.username_pw_set(username, password)
+    client.on_connect = on_connect
+    client.connect(broker, port)
+    return client
+
+def subscribe(client: mqtt_client):
+    def on_message(client, userdata, msg):
+        received = msg.payload.decode()
+        print(f"Received `{received}` from `{msg.topic}` topic")
+        
+        if array[LIGHTS] == "ON":
+            light = 1
+        else:
+            light = 0
+        
+        msg = f"Temp: {array[TEMP]}, Lights: {light}, Fan: {received}"
+        
+        result = client.publish(send_topic, msg)
+        status = result.rc
+        if status == 0:
+           print(f"Send `{msg}` to topic `{send_topic}`")
+        else:
+           print(f"Failed to send message to topic {send_topic}")
+
+    client.subscribe(rec_topic, qos=0)
+    client.on_message = on_message
+
 
 ##################################################
 # Decode the NanoPB package
@@ -21,21 +74,18 @@ def decode_nanopb(line):
         data = sensor_pb2.SensorData()
         data.ParseFromString(hex_values)
 
-        array[0] = data.temp // 100
-        print(array[0])
+        array[TEMP] = data.temp // 100
+        print(array[TEMP])
         
-        array[1] = data.light
-        print(array[1])
+        array[INTENSITY] = data.light
+        print(array[INTENSITY])
         
         if data.clap == 1:
             #Light is on:
-            array[2] = "ON"
+            array[LIGHTS] = "ON"
         else:
-            array[2] = "OFF"
-        print(array[2])
-        
-        array[3] = data.fan
-        print(array[3])        
+            array[LIGHTS] = "OFF"
+        print(array[LIGHTS])        
 
     except Exception as e:
         print("[ERROR] Failed to parse line:", e)
@@ -52,38 +102,47 @@ client = InfluxDBClient3(
 )
 
 ##################################################
-# Open the serial port
-##################################################
-ser = serial.Serial('/dev/ttyACM0', 115200)
-print("Connected to serial port...")
-last = time.time()
-
-##################################################
 # Update the dashboard ever 2 seconds
 ##################################################
-while True:
-    while(time.time() - last < 5):
-        data = ser.readline().decode('utf-8').strip()
-    try:
-        data = ser.readline().decode('utf-8').strip()
-        print(data)
-        result = decode_nanopb(data)
-        
-        # Prepare the data point for InfluxDB
-        point = Point("dash") \
-            .tag("node", "project") \
-            .field("Temperature", array[0]) \
-            .field("Intensity", array[1]) \
-            .field("Light", array[2]) \
-            .field("Fan", array[3])           
-        
-        # Write the point to InfluxDB
-        client.write(point)
-        print(f"Wrote data to InfluxDB")
-        last = time.time()
+    
+def dashboard_sender():
+    #ser = serial.Serial('/dev/ttyACM0', 115200)
+    #print("Connected to serial port...")
+    last = time.time()
+    while True:
+        while(time.time() - last < 5):
+            #data = ser.readline().decode('utf-8').strip()
+            x=1
+        try:
+            #data = ser.readline().decode('utf-8').strip()
+            #print(data)
+            #result = decode_nanopb(data)
+            
+            # Prepare the data point for InfluxDB
+            point = Point("dash") \
+                .tag("node", "project") \
+                .field("Temperature", array[TEMP]) \
+                .field("Intensity", array[INTENSITY]) \
+                .field("Light", array[LIGHTS]) \
+                .field("Fan", array[FAN])           
+            
+            # Write the point to InfluxDB
+            client.write(point)
+            print(f"Wrote data to InfluxDB")
+            last = time.time()
 
-    except Exception as e:
-        print(f"Error reading from serial port or writing to InfluxDB: {e}")
-        break
+        except Exception as e:
+            print(f"Error reading from serial port or writing to InfluxDB: {e}")
+            break
+    #ser.close()
 
-ser.close()
+def mqtt_sender():
+    client = connect_mqtt()
+    subscribe(client)
+    client.loop_forever()
+
+if __name__ == "__main__":
+    t1 = threading.Thread(target=dashboard_sender, args=())
+    t2 = threading.Thread(target=mqtt_sender, args=())
+    t1.start()
+    t2.start()
