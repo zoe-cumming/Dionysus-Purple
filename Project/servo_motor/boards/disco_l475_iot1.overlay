@@ -1,0 +1,56 @@
+/* Define a PWM servo device using pwm2 channel 1 */
+&pwm2 {
+    servo: servo {
+        compatible = "pwm-servo";
+        pwms = <&pwm2 1 PWM_MSEC(20) PWM_POLARITY_NORMAL>; /* Channel 1, 20ms period (50Hz) */
+        min-pulse = <PWM_USEC(700)>;
+        max-pulse = <PWM_USEC(2500)>;
+        label = "servo";
+    };
+};
+
+/ {
+    gpio_pins {
+        compatible = "gpio-keys";
+        status = "okay";
+
+        one_pin: one {
+            gpios = <&gpioc 5 GPIO_ACTIVE_LOW>;  // GPIO4 for TRIG
+            label = "ONE";
+        };
+
+        two_pin: two {
+            gpios = <&gpioc 4 GPIO_ACTIVE_LOW>;  // GPIO5 for ECHO
+            label = "TWO";
+        };
+
+        three_pin: three {
+            gpios = <&gpioc 3 GPIO_ACTIVE_LOW>;  // GPIO4 for TRIG
+            label = "THREE";
+        };
+
+        four_pin: four {
+            gpios = <&gpioc 2 GPIO_ACTIVE_LOW>;  // GPIO5 for ECHO
+            label = "FOUR";
+        };
+
+        five_pin: five {
+            gpios = <&gpioc 1 GPIO_ACTIVE_LOW>;  // GPIO4 for TRIG
+            label = "FIVE";
+        };
+
+        zero_pin: zero {
+            gpios = <&gpioc 0 GPIO_ACTIVE_LOW>;  // GPIO5 for ECHO
+            label = "ZERO";
+        };
+    };
+
+    aliases {
+        one = &one_pin;
+        two = &two_pin;
+        three = &three_pin;
+        four = &four_pin;
+        five = &five_pin;
+        zero = &zero_pin;
+    };
+};
