@@ -19,13 +19,13 @@
 // WiFi settings
 #define WIFI_SSID "Super6"
 #define WIFI_PSK "L10n5Br0nc05?" // CONFIGURE
-#define HIVEMQ_HOSTNAME "broker.emqx.io"
+#define HOSTNAME "broker.emqx.io"
 #define BROKER_IP "44.232.241.40"
-#define HIVEMQ_PORT 1883
+#define PORT 1883
 #define CLIENT_ID "m5stack-zephyr-client"
 #define MQTT_SUBSCRIBE_TOPIC "python/mqtt"
-#define HIVEMQ_USERNAME "emqx"
-#define HIVEMQ_PASSWORD "public"
+#define MQTT_USERNAME "emqx"
+#define MQTT_PASSWORD "public"
 
 // Buffer sizes
 #define MQTT_CLIENT_RX_BUF_LEN 128
@@ -38,10 +38,6 @@ static int nfds;
 
 static uint8_t rx_buff[MQTT_CLIENT_RX_BUF_LEN];
 static uint8_t tx_buff[MQTT_CLIENT_TX_BUF_LEN];
-
-// HTTP GET settings
-#define CONFIG_NET_CONFIG_PEER_IPV_ADDR "192.168.68.60"
-#define PEER_PORT 1234
 
 // Event callbacks
 static struct net_mgmt_event_callback wifi_cb;
@@ -116,10 +112,10 @@ void dns_result_cb(enum dns_resolve_status status, struct dns_addrinfo *info, vo
 		addr = &net_sin(&info->ai_addr)->sin_addr;
         struct sockaddr_in *broker_addr = (struct sockaddr_in *)&broker;
         broker_addr->sin_family = AF_INET;
-        broker_addr->sin_port = htons(HIVEMQ_PORT);
+        broker_addr->sin_port = htons(PORT);
         memcpy(&broker_addr->sin_addr, &net_sin(&info->ai_addr)->sin_addr, sizeof(struct in_addr));
         net_addr_ntop(AF_INET, &broker_addr->sin_addr, hr_addr, sizeof(hr_addr));
-        printf("Resolved %s to IPv4 address: %s\n", HIVEMQ_HOSTNAME, hr_addr);
+        printf("Resolved %s to IPv4 address: %s\n", HOSTNAME, hr_addr);
 	} else if (info->ai_family == AF_INET6) {
 		hr_family = "IPv6";
 		addr = &net_sin6(&info->ai_addr)->sin6_addr;
@@ -140,8 +136,8 @@ static int resolve_dns(void)
         return -1;
     }
 
-    printk("Resolving hostname: %s\n", HIVEMQ_HOSTNAME);
-    int ret = dns_get_addr_info(HIVEMQ_HOSTNAME, DNS_QUERY_TYPE_A, NULL, dns_result_cb, (void*)HIVEMQ_HOSTNAME, 10000);
+    printk("Resolving hostname: %s\n", HOSTNAME);
+    int ret = dns_get_addr_info(HOSTNAME, DNS_QUERY_TYPE_A, NULL, dns_result_cb, (void*)HOSTNAME, 10000);
     if (ret) {
         printk("Failed to start DNS query: %d\n", ret);
         return ret;
@@ -155,8 +151,7 @@ static int resolve_dns(void)
     return 0;
 }
 
-static void mqtt_evt_handler(struct mqtt_client *client, const struct mqtt_evt *evt)
-{
+static void mqtt_evt_handler(struct mqtt_client *client, const struct mqtt_evt *evt) {
     switch (evt->type) {
     case MQTT_EVT_CONNACK:
         if (evt->result == 0) {
@@ -238,12 +233,12 @@ static int mqtt_connect_client(void)
 
     
     struct mqtt_utf8 username = {
-        .utf8 = (uint8_t *)HIVEMQ_USERNAME,
-        .size = strlen(HIVEMQ_USERNAME)
+        .utf8 = (uint8_t *)MQTT_USERNAME,
+        .size = strlen(MQTT_USERNAME)
     };
     struct mqtt_utf8 password = {
-        .utf8 = (uint8_t *)HIVEMQ_PASSWORD,
-        .size = strlen(HIVEMQ_PASSWORD)
+        .utf8 = (uint8_t *)MQTT_PASSWORD,
+        .size = strlen(MQTT_PASSWORD)
     };
 
     client.password = &password;
@@ -466,7 +461,7 @@ int main(void)
     lv_init();
     display_blanking_off(display);
     lv_task_handler();
-    update_display(100, 20, true);
+    update_display(0, 25, true);
 
     printk("WiFi Connection and TCP Client\r\n");
 
@@ -548,45 +543,5 @@ int main(void)
     }
 
     mqtt_disconnect(&client);
-    /*sock = zsock_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (sock < 0) {
-		printk("socket: %d", -errno);
-		return 0;
-	}
-
-    struct sockaddr_in addr = {
-		.sin_family = AF_INET,
-		.sin_port = htons(PEER_PORT),
-	};
-
-    net_addr_pton(AF_INET, CONFIG_NET_CONFIG_PEER_IPV_ADDR, &addr.sin_addr);
-
-	if (zsock_connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-		printk("connect: %d", -errno);
-		return 0;
-	}
-
-    printk("Connected! Sending...\n");
-
-	while (1) {
-        snprintf(setting, sizeof(setting) - 1, "%d\n", value);
-        ret = zsock_send(sock, setting, sizeof(setting) - 1, 0);
-        if (ret < 0) {
-            printk("send: %d", -errno);
-		    return 0;
-        }
-
-        value += 1;
-        if (value > 5) {
-            value = 1;
-        }
-
-        k_msleep(1000);
-	}
-
-    // Close the socket
-    printk("Closing socket\r\n");
-    zsock_close(sock);*/
-
     return 0;
 }
