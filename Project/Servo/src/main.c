@@ -65,6 +65,7 @@ int main(void)
 			if (pulse_width <= min_pulse) {
 				dir = UP;
 				pulse_width = min_pulse;
+				printk("Changing to up\n");
 			} else {
 				pulse_width -= STEP;
 			}
@@ -74,6 +75,7 @@ int main(void)
 			if (pulse_width >= max_pulse) {
 				dir = DOWN;
 				pulse_width = max_pulse;
+				printk("Changing to down\n");
 			}
 		}
 

@@ -21,8 +21,8 @@ def decode_nanopb(line):
         data = sensor_pb2.SensorData()
         data.ParseFromString(hex_values)
 
-        array[0] = data.temp
-        print(array[0] / 100)
+        array[0] = data.temp // 100
+        print(array[0])
         
         array[1] = data.light
         print(array[1])
@@ -56,11 +56,14 @@ client = InfluxDBClient3(
 ##################################################
 ser = serial.Serial('/dev/ttyACM0', 115200)
 print("Connected to serial port...")
+last = time.time()
 
 ##################################################
 # Update the dashboard ever 2 seconds
 ##################################################
 while True:
+    while(time.time() - last < 5):
+        data = ser.readline().decode('utf-8').strip()
     try:
         data = ser.readline().decode('utf-8').strip()
         print(data)
@@ -75,7 +78,7 @@ while True:
             .field("Fan", array[3])           
         
         # Write the point to InfluxDB
-        client.write(point) # NOT WORKING ATM
+        client.write(point)
         print(f"Wrote data to InfluxDB")
         last = time.time()
 
@@ -83,4 +86,4 @@ while True:
         print(f"Error reading from serial port or writing to InfluxDB: {e}")
         break
 
-#ser.close()
+ser.close()

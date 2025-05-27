@@ -188,7 +188,7 @@ def mqtt_sender(pred_queue):
     client.loop_start()
     while True:
         predicted_class = pred_queue.get()
-        msg = f"Fan: {predicted_class}"
+        msg = f"Temp: 30, Lights: 1, Fan: {predicted_class}"
         result = client.publish(topic, msg)
         status = result.rc
         if status == 0:
