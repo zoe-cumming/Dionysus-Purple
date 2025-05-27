@@ -57,7 +57,7 @@ def recv_exact(sock, size, timeout=5):
 # Display the images using cv2
 ################################################
 def main():
-    frame_count = 1100
+    frame_count = 3500
     os.makedirs("five", exist_ok=True)
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect((HOST, PORT))
