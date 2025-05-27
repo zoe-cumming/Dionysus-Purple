@@ -30,13 +30,13 @@
 // WiFi settings
 #define WIFI_SSID "Zoe"
 #define WIFI_PSK "z0chYo15"// CONFIGURE
-#define HIVEMQ_HOSTNAME "broker.emqx.io"
+#define MQTT_HOSTNAME "broker.emqx.io"
 #define BROKER_IP "44.232.241.40"
-#define HIVEMQ_PORT 1883
+#define MQTT_PORT 1883
 #define CLIENT_ID "m5stack-zephyr-client"
 #define MQTT_SUBSCRIBE_TOPIC "python/mqtt"
-#define HIVEMQ_USERNAME "emqx"
-#define HIVEMQ_PASSWORD "public"
+#define MQTT_USERNAME "emqx"
+#define MQTT_PASSWORD "public"
 
 // Buffer sizes
 #define MQTT_CLIENT_RX_BUF_LEN 128
@@ -97,10 +97,10 @@ void dns_result_cb(enum dns_resolve_status status, struct dns_addrinfo *info, vo
 		addr = &net_sin(&info->ai_addr)->sin_addr;
         struct sockaddr_in *broker_addr = (struct sockaddr_in *)&broker;
         broker_addr->sin_family = AF_INET;
-        broker_addr->sin_port = htons(HIVEMQ_PORT);
+        broker_addr->sin_port = htons(MQTT_PORT);
         memcpy(&broker_addr->sin_addr, &net_sin(&info->ai_addr)->sin_addr, sizeof(struct in_addr));
         net_addr_ntop(AF_INET, &broker_addr->sin_addr, hr_addr, sizeof(hr_addr));
-        printf("Resolved %s to IPv4 address: %s\n", HIVEMQ_HOSTNAME, hr_addr);
+        printf("Resolved %s to IPv4 address: %s\n", MQTT_HOSTNAME, hr_addr);
 	} else if (info->ai_family == AF_INET6) {
 		hr_family = "IPv6";
 		addr = &net_sin6(&info->ai_addr)->sin6_addr;
@@ -121,8 +121,8 @@ static int resolve_dns(void)
         return -1;
     }
 
-    printk("Resolving hostname: %s\n", HIVEMQ_HOSTNAME);
-    int ret = dns_get_addr_info(HIVEMQ_HOSTNAME, DNS_QUERY_TYPE_A, NULL, dns_result_cb, (void*)HIVEMQ_HOSTNAME, 10000);
+    printk("Resolving hostname: %s\n", MQTT_HOSTNAME);
+    int ret = dns_get_addr_info(MQTT_HOSTNAME, DNS_QUERY_TYPE_A, NULL, dns_result_cb, (void*)MQTT_HOSTNAME, 10000);
     if (ret) {
         printk("Failed to start DNS query: %d\n", ret);
         return ret;
@@ -218,12 +218,12 @@ static int mqtt_connect_client(void)
 
     
     struct mqtt_utf8 username = {
-        .utf8 = (uint8_t *)HIVEMQ_USERNAME,
-        .size = strlen(HIVEMQ_USERNAME)
+        .utf8 = (uint8_t *)MQTT_USERNAME,
+        .size = strlen(MQTT_USERNAME)
     };
     struct mqtt_utf8 password = {
-        .utf8 = (uint8_t *)HIVEMQ_PASSWORD,
-        .size = strlen(HIVEMQ_PASSWORD)
+        .utf8 = (uint8_t *)MQTT_PASSWORD,
+        .size = strlen(MQTT_PASSWORD)
     };
 
     client.password = &password;
