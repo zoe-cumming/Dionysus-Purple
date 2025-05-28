@@ -19,23 +19,16 @@
 #define POLL_THREAD_PRIORITY 1
 #define ULTRA_THREAD_PRIORITY 2
 
-#define TRIG_PIN 4
-#define ECHO_PIN 5
-#define GPIO_NODE DT_NODELABEL(gpio0)
-
 // GPIO pins
 #define PIN_ZERO 6
 #define PIN_ONE 7
 #define PIN_TWO 8
 #define GPIO_NODE DT_NODELABEL(gpio0)
-
-// Define timeout values
-#define ECHO_TIMEOUT_US 25000
-#define MAX_RANGE_TIMEOUT_US 40000 // CHANGE THIS VALUE?
+const struct device *gpio_dev = DEVICE_DT_GET(GPIO_NODE);
 
 // WiFi settings
-#define WIFI_SSID "Zoe"
-#define WIFI_PSK "z0chYo15"// CONFIGURE
+#define WIFI_SSID "Jacob"
+#define WIFI_PSK "Wynnum4178!"// CONFIGURE
 #define MQTT_HOSTNAME "broker.emqx.io"
 #define BROKER_IP "44.232.241.40"
 #define MQTT_PORT 1883
@@ -142,6 +135,37 @@ static int resolve_dns(void)
     return 0;
 }
 
+static void set_fan_speed(int fan_speed) {
+    if (fan_speed == 1) {
+		gpio_pin_set(gpio_dev, PIN_ZERO, 1);
+        gpio_pin_set(gpio_dev, PIN_ONE, 0);
+        gpio_pin_set(gpio_dev, PIN_TWO, 0);
+	} else if (fan_speed == 2) {
+		gpio_pin_set(gpio_dev, PIN_ZERO, 0);
+		gpio_pin_set(gpio_dev, PIN_ONE, 1);
+        gpio_pin_set(gpio_dev, PIN_TWO, 0);
+    } else if (fan_speed == 3) {
+		gpio_pin_set(gpio_dev, PIN_ZERO, 1);
+		gpio_pin_set(gpio_dev, PIN_ONE, 1);
+        gpio_pin_set(gpio_dev, PIN_TWO, 0);
+	} else if (fan_speed == 4) {
+		gpio_pin_set(gpio_dev, PIN_ZERO, 0);
+		gpio_pin_set(gpio_dev, PIN_ONE, 0);
+        gpio_pin_set(gpio_dev, PIN_TWO, 1);
+	} else if (fan_speed == 5) {
+		gpio_pin_set(gpio_dev, PIN_ZERO, 1);
+		gpio_pin_set(gpio_dev, PIN_ONE, 0);
+        gpio_pin_set(gpio_dev, PIN_TWO, 1);
+	} else if (fan_speed == 0) {
+		gpio_pin_set(gpio_dev, PIN_ZERO, 0);
+		gpio_pin_set(gpio_dev, PIN_ONE, 0);
+        gpio_pin_set(gpio_dev, PIN_TWO, 0);
+	} else {
+        //Nothing detected, don't change
+        ;
+    }
+}
+
 static void mqtt_evt_handler(struct mqtt_client *client, const struct mqtt_evt *evt)
 {
     int temp = 0, fan = 0, lights = 0;
@@ -189,6 +213,7 @@ static void mqtt_evt_handler(struct mqtt_client *client, const struct mqtt_evt *
 
             printk("Fan Speed: %d", fan);
             //Drive the servo
+            set_fan_speed(fan);
         }
         break;
     default:
@@ -454,7 +479,6 @@ void poll_thread(void *arg1, void *arg2, void *arg3) {
 int init_gpios(void)
 {
     int ret;
-	const struct device *gpio_dev = DEVICE_DT_GET(GPIO_NODE);
     if (!device_is_ready(gpio_dev)) {
         printk("Error: GPIO device not ready\n");
         return 1;
@@ -481,104 +505,11 @@ int init_gpios(void)
         return 1;
     }
 
+    gpio_pin_set(gpio_dev, PIN_ZERO, 0);
+	gpio_pin_set(gpio_dev, PIN_ONE, 0);
+    gpio_pin_set(gpio_dev, PIN_TWO, 0);
+
     return 0;
-}
-
-void ultra_thread(void *arg1, void *arg2, void *arg3) {
-    // Define timing variables
-    uint32_t start_time, cycles_spent;
-    uint32_t stop_time = 0;
-    uint64_t nanoseconds_spent;
-    uint32_t distance_cm;
-    int ret, timeout_occurred;
-
-    // Set-up device
-    const struct device *gpio_dev = DEVICE_DT_GET(GPIO_NODE);
-    if (!device_is_ready(gpio_dev)) {
-        printk("Error: GPIO device not ready\n");
-        return;
-    }
-
-    // Configure pins
-    ret = gpio_pin_configure(gpio_dev, TRIG_PIN, GPIO_OUTPUT_INACTIVE);
-    if (ret < 0) {
-        printk("Error configuring trigger pin: %d\n", ret);
-        return;
-    }
-
-    ret = gpio_pin_configure(gpio_dev, ECHO_PIN, GPIO_INPUT);
-    if (ret < 0) {
-        printk("Error configuring echo pin: %d\n", ret);
-        return;
-    }
-
-    while (k_sem_count_get(&ultra_sem) == 0) {
-        k_sleep(K_MSEC(100)); // Give some delay for CPU
-    }
-
-    while (1) {
-        timeout_occurred = 0;
-        printk("running...");
-
-        // Send 10us trigger pulse
-        gpio_pin_set(gpio_dev, TRIG_PIN, 1);
-        k_busy_wait(10);
-        gpio_pin_set(gpio_dev, TRIG_PIN, 0);
-
-        uint32_t echo_start_time = k_cycle_get_32();
-
-        // Wait allocated time for echo pin to be set high
-        while (gpio_pin_get(gpio_dev, ECHO_PIN) == 0) {
-            if (k_cyc_to_us_floor32(k_cycle_get_32() - echo_start_time) > ECHO_TIMEOUT_US) {
-                timeout_occurred = 1;
-                break;
-            }
-        }
-        
-        // Echo set high
-        if (!timeout_occurred) {
-            // Start timing
-            start_time = k_cycle_get_32();
-
-            // Wait for echo to go low
-            while (gpio_pin_get(gpio_dev, ECHO_PIN) == 1) {
-                stop_time = k_cycle_get_32();
-
-                if (k_cyc_to_us_floor32(stop_time - start_time) > MAX_RANGE_TIMEOUT_US) {
-                    timeout_occurred = 1;
-                    break;
-                }
-            }
-
-            if (!timeout_occurred) {
-                // Find distance
-                cycles_spent = stop_time - start_time;
-                nanoseconds_spent = k_cyc_to_ns_floor64(cycles_spent);
-                distance_cm = nanoseconds_spent / 58000; // CHECK THIS VALUE
-                
-                printk("Distance: %d cm\n", distance_cm);
-
-                // This will then be sent via Wifi
-                if (distance_cm < 50) {
-                    //Broadcast the ultrasonic value
-                    if (client.internal.state) {
-                        //ret = mqtt_subscribe_topic(MQTT_SUBSCRIBE_TOPIC);
-                        ret = mqtt_publish_message(MQTT_SUBSCRIBE_TOPIC, "Hello from ESP");
-                        if (ret < 0) {
-                            printf("Failed to subscribe to topic, error: %d\n", ret);
-                            return;
-                        }
-                    } else {
-                        printf("MQTT client not connected, cannot subscribe.\n");
-                    }
-
-                }
-            }
-        }
-
-        // Wait 
-        k_sleep(K_MSEC(100));
-    }
 }
 
 int main(void)
@@ -673,5 +604,4 @@ int main(void)
     return 0;
 }
 
-K_THREAD_DEFINE(ultra_id, STACK_SIZE, ultra_thread, NULL, NULL, NULL, ULTRA_THREAD_PRIORITY, 0, 0);
 K_THREAD_DEFINE(mqtt_poll_id, STACK_SIZE, poll_thread, NULL, NULL, NULL, POLL_THREAD_PRIORITY, 0, 0);
