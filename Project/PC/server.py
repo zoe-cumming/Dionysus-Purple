@@ -42,8 +42,8 @@ def publish(client):
     msg_count = 0
     while True:
         time.sleep(2)
-        #msg = f"messages: {msg_count}"
-        msg = "3"
+        msg = f"{msg_count}"
+        #msg = "3"
         result = client.publish(topic, msg)
         # result: [0, 1]
         status = result.rc
@@ -52,6 +52,9 @@ def publish(client):
         else:
            print(f"Failed to send message to topic {topic}")
         msg_count += 1
+        
+        if msg_count > 5:
+            msg_count = 0
 
 def disconnect(client: mqtt_client):
     client.loop_stop()

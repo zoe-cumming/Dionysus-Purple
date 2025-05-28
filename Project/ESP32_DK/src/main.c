@@ -462,19 +462,7 @@ int wifi_disconnect(void)
     return ret;
 }
 
-void poll_thread(void *arg1, void *arg2, void *arg3) {
 
-    while (k_sem_count_get(&poll_sem) == 0) {
-        k_sleep(K_MSEC(100)); // Give some delay for CPU
-    }
-
-    while (1) {
-        // Poll for MQTT events until connected
-        mqtt_input(&client);
-        mqtt_live(&client);
-        k_sleep(K_MSEC(100)); // Give some delay for CPU
-    }
-}
 
 int init_gpios(void)
 {
@@ -594,8 +582,10 @@ int main(void)
         if (fds[0].revents & POLLHUP) {
             printk("POLLHUP\n");
             break;
-        }    
+        }
 
+        mqtt_input(&client);
+        mqtt_live(&client);
         k_msleep(1000);
     }
 
@@ -604,4 +594,4 @@ int main(void)
     return 0;
 }
 
-K_THREAD_DEFINE(mqtt_poll_id, STACK_SIZE, poll_thread, NULL, NULL, NULL, POLL_THREAD_PRIORITY, 0, 0);
+//K_THREAD_DEFINE(mqtt_poll_id, STACK_SIZE, poll_thread, NULL, NULL, NULL, POLL_THREAD_PRIORITY, 0, 0);

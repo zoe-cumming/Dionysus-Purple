@@ -7,7 +7,8 @@ import time
 broker = 'broker.emqx.io'
 port = 1883
 rec_topic = 'python/pc'
-send_topic = 'python/mqtt'
+ESP_topic = 'python/mqtt'
+M5_topic = 'python/mqtt/M5'
 client_id = f'python-mqtt-{random.randint(0, 1000)}'
 username = 'emqx'
 password = 'public'
@@ -33,13 +34,20 @@ def subscribe(client: mqtt_client):
         #publish(client)
         #msg = f"messages: {msg_count}"
         msg = f"Temp: 10, Lights: 0, Fan: {received}"
-        result = client.publish(send_topic, msg)
+        result = client.publish(ESP_topic, msg)
         # result: [0, 1]
         status = result.rc
         if status == 0:
-           print(f"Send `{msg}` to topic `{send_topic}`")
+           print(f"Send `{msg}` to topic `{ESP_topic}`")
         else:
-           print(f"Failed to send message to topic {send_topic}")
+           print(f"Failed to send message to topic {ESP_topic}")
+        #result = client.publish(M5_topic, msg)
+        # result: [0, 1]
+        #status = result.rc
+        #if status == 0:
+        #   print(f"Send `{msg}` to topic `{M5_topic}`")
+        #else:
+        #   print(f"Failed to send message to topic {M5_topic}")
 
     client.subscribe(rec_topic, qos=0)
     client.on_message = on_message
@@ -53,13 +61,13 @@ def publish(client):
     while True:
         time.sleep(1)
         msg = f"messages: {msg_count}"
-        result = client.publish(send_topic, msg)
+        result = client.publish(ESP_topic, msg)
         # result: [0, 1]
         status = result.rc
         if status == 0:
-           print(f"Send `{msg}` to topic `{send_topic}`")
+           print(f"Send `{msg}` to topic `{ESP_topic}`")
         else:
-           print(f"Failed to send message to topic {send_topic}")
+           print(f"Failed to send message to topic {ESP_topic}")
         msg_count += 1
 
 def disconnect(client: mqtt_client):
