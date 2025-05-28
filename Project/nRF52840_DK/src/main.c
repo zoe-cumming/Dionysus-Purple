@@ -88,9 +88,6 @@ void nanopb_encode_and_print(void) {
     data.temp = temp;
     data.clap = light_on;
     data.light = light;
-    data.temp = 30;
-    data.clap = true;
-    data.light = 100;
 
     pb_ostream_t stream = pb_ostream_from_buffer(test_encoded_buffer, sizeof(test_encoded_buffer));
 
@@ -145,7 +142,7 @@ static bool adv_data_cb(struct bt_data *data, void *user_data) {
     clap = payload[MINOR_OFFSET + 1];
     light = (int8_t)payload[TX_POWER_OFFSET] * 100;
 
-    printk("Received - Temp: %d, Clap: %d, Light: %d\n", temp, clap, light);
+    //printk("Received - Temp: %d, Clap: %d, Light: %d\n", temp, clap, light);
     return false;  // Stop parsing further
 }
 
@@ -354,7 +351,7 @@ int main(void)
         bt_le_scan_stop();
         //print_to_serial();
         if ((k_uptime_get() - print_time) >= 2000) {
-            //nanopb_encode_and_print();
+            nanopb_encode_and_print();
             //nanopb_decode_and_print(test_encoded_buffer, test_encoded_len);
             print_time = k_uptime_get();
         }

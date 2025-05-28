@@ -110,7 +110,7 @@ client = InfluxDBClient3(
 ##################################################
     
 def dashboard_sender():
-    ser = serial.Serial('/dev/ttyACM0', 115200, timeout=0)
+    ser = serial.Serial('/dev/ttyACM0', 115200)
     print("Connected to serial port...")
     last = time.time()
     while True:
