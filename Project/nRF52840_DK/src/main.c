@@ -194,7 +194,6 @@ static void advertise_nrf(bool sensor_state) {
         0xC8                                            // TX Power 
     };
 
-    shell_print(sh, "Packing BLE Data - sensors setting: %d", sensor_state);
 
 	printk("Packing BLE Data - sensors setting: %d, \n",
         sensor_state); 
@@ -215,9 +214,9 @@ static void advertise_nrf(bool sensor_state) {
         printk("Advertising failed: %d", err);
     } else {
         printk("[ADVERTISING] iBeacon Payload (%d bytes):", sizeof(beacon_data));
-        for (int i = 0; i < sizeof(beacon_data); i++) {
-            shell_fprintf(sh, SHELL_NORMAL, "%02X ", beacon_data[i]);
-        }
+        // for (int i = 0; i < sizeof(beacon_data); i++) {
+        //     shell_fprintf(sh, SHELL_NORMAL, "%02X ", beacon_data[i]);
+        // }
         printk("");
     }
 
@@ -331,7 +330,7 @@ int main(void)
         bt_le_scan_stop();
         //print_to_serial();
         if ((k_uptime_get() - print_time) >= 2000) {
-            //nanopb_encode_and_print();
+            nanopb_encode_and_print();
             // nanopb_decode_and_print(test_encoded_buffer, test_encoded_len);
             print_time = k_uptime_get();
         }
@@ -341,7 +340,7 @@ int main(void)
             clap = 0;  // reset after action
         }
 
-        //advertise_nrf(sensors_on);
+        advertise_nrf(sensors_on);
 
         bt_le_scan_start(&scan_params, device_found);
     }
