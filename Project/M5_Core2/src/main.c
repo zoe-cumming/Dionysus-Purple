@@ -17,8 +17,8 @@
 #include <zephyr/net/net_if.h>
 
 // WiFi settings
-#define WIFI_SSID "Super6"
-#define WIFI_PSK "L10n5Br0nc05?" // CONFIGURE
+#define WIFI_SSID "Jacob"
+#define WIFI_PSK "Wynnum4178!" // CONFIGURE
 #define HOSTNAME "broker.emqx.io"
 #define BROKER_IP "44.232.241.40"
 #define PORT 1883

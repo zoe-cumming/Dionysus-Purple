@@ -32,7 +32,7 @@ const struct device *gpio_dev = DEVICE_DT_GET(GPIO_NODE);
 #define MQTT_HOSTNAME "broker.emqx.io"
 #define BROKER_IP "44.232.241.40"
 #define MQTT_PORT 1883
-#define CLIENT_ID "m5stack-zephyr-client"
+#define CLIENT_ID "ESP32-zephyr-client"
 #define MQTT_SUBSCRIBE_TOPIC "python/mqtt"
 #define MQTT_USERNAME "emqx"
 #define MQTT_PASSWORD "public"
