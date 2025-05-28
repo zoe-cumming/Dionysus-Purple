@@ -144,46 +144,46 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi,
     bt_data_parse(ad, adv_data_cb, (void *)addr);
 }
 
-// send cli command to thingy
-// static void advertise_nrf(const struct shell *sh, bool sensor_state) {  
-//     uint8_t beacon_data[] = {
-//         0x4C, 0x00, 0x02, 0x15,                         // Apple iBeacon prefix
-//         0x18, 0xEE, 0x15, 0x16, 0x01, 0x6B, 0x4B, 0xEC, // UUID part 1
-//         0xAD, 0x96, 0xBC, 0xB9, 0x6D, 0x16, 0x6E, 0x97, // UUID part 2
-//         0x00, 0x00, 0x00, 0x00,                         // Major / Minor placeholder
-//         0xC8                                            // TX Power 
-//     };
+//send cli command to thingy
+static void advertise_nrf_cli(const struct shell *sh, bool sensor_state) {  
+    uint8_t beacon_data[] = {
+        0x4C, 0x00, 0x02, 0x15,                         // Apple iBeacon prefix
+        0x18, 0xEE, 0x15, 0x16, 0x01, 0x6B, 0x4B, 0xEC, // UUID part 1
+        0xAD, 0x96, 0xBC, 0xB9, 0x6D, 0x16, 0x6E, 0x97, // UUID part 2
+        0x00, 0x00, 0x00, 0x00,                         // Major / Minor placeholder
+        0xC8                                            // TX Power 
+    };
 
-//     shell_print(sh, "Packing BLE Data - sensors setting: %d", sensor_state);
+    shell_print(sh, "Packing BLE Data - sensors setting: %d", sensor_state);
 
-// 	// printk("Packing BLE Data - sensors setting: %d, \n",
-//     //    sensor_state); 
+	// printk("Packing BLE Data - sensors setting: %d, \n",
+    //    sensor_state); 
 
-// 	beacon_data[MAJOR_OFFSET]     = 0x00;  // MSB
-//     beacon_data[MAJOR_OFFSET + 1] = (uint8_t)sensor_state;  // LSB
+	beacon_data[MAJOR_OFFSET]     = 0x00;  // MSB
+    beacon_data[MAJOR_OFFSET + 1] = (uint8_t)sensor_state;  // LSB
 	
 
-//     struct bt_data ad[] = {
-//         BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_NO_BREDR),
-//         BT_DATA(BT_DATA_MANUFACTURER_DATA, beacon_data, sizeof(beacon_data)),
-//     };
+    struct bt_data ad[] = {
+        BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_NO_BREDR),
+        BT_DATA(BT_DATA_MANUFACTURER_DATA, beacon_data, sizeof(beacon_data)),
+    };
 
-//     bt_le_adv_stop();
-//     int err = bt_le_adv_start(BT_LE_ADV_NCONN, ad, ARRAY_SIZE(ad), NULL, 0);
+    bt_le_adv_stop();
+    int err = bt_le_adv_start(BT_LE_ADV_NCONN, ad, ARRAY_SIZE(ad), NULL, 0);
 
-// 	if (err) {
-//         shell_print(sh, "Advertising failed: %d", err);
-//     } else {
-//         shell_print(sh, "[ADVERTISING] iBeacon Payload (%d bytes):", sizeof(beacon_data));
-//         for (int i = 0; i < sizeof(beacon_data); i++) {
-//             shell_fprintf(sh, SHELL_NORMAL, "%02X ", beacon_data[i]);
-//         }
-//         shell_print(sh, "");
-//     }
+	if (err) {
+        shell_print(sh, "Advertising failed: %d", err);
+    } else {
+        shell_print(sh, "[ADVERTISING] iBeacon Payload (%d bytes):", sizeof(beacon_data));
+        for (int i = 0; i < sizeof(beacon_data); i++) {
+            shell_fprintf(sh, SHELL_NORMAL, "%02X ", beacon_data[i]);
+        }
+        shell_print(sh, "");
+    }
 
-//     k_sleep(K_MSEC(20));
-//     bt_le_adv_stop();
-// }
+    k_sleep(K_MSEC(200));
+    bt_le_adv_stop();
+}
 
 static void advertise_nrf(bool sensor_state) {  
     uint8_t beacon_data[] = {
@@ -361,7 +361,7 @@ static int sensors_cli(const struct shell *sh, size_t argc, char **argv)
                 sensors_on = true;
                 shell_print(sh, "Turning sensors on");
                 //shell_print(sh, "Calling advertise_nrf() with state %d", sensors_on);
-                //advertise_nrf(sh, sensors_on);
+                //advertise_nrf_cli(sh, sensors_on);
             }
         }
         else if (0 == strcmp(argv[2], "off")) {
@@ -369,7 +369,7 @@ static int sensors_cli(const struct shell *sh, size_t argc, char **argv)
                 sensors_on = false;
                 shell_print(sh, "Turning sensors off");
                 //shell_print(sh, "Calling advertise_nrf() with state %d", sensors_on);
-                //advertise_nrf(sh, sensors_on);
+                //advertise_nrf_cli(sh, sensors_on);
             } else {
                 shell_print(sh, "Sensors already off");
             }
