@@ -187,8 +187,10 @@ def mqtt_sender(pred_queue):
     client.loop_start()
     last = time.time()
     while True:
-        #predicted_class = pred_queue.get()
-        #msg = f"{predicted_class}"
+        predicted_class = pred_queue.get()
+        if predicted_class == 'None':
+            continue
+        msg = f"{predicted_class}"
         msg = '3'
         if (time.time() - last > 2):
             result = client.publish(topic, msg)
