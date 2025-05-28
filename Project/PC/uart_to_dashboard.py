@@ -6,7 +6,7 @@ import serial
 import sensor_pb2
 import threading
 
-mutex = threading.Lock()
+#mutex = threading.Lock()
 
 TEMP = 0
 INTENSITY = 1
@@ -47,7 +47,8 @@ def subscribe(client: mqtt_client):
         received = msg.payload.decode()
         print(f"Received `{received}` from `{msg.topic}` topic")
         
-        with mutex:
+        #with mutex:
+        for i in range(1):
             if array[LIGHTS] == "ON":
                 light = 1
             else:
@@ -109,31 +110,25 @@ client = InfluxDBClient3(
 ##################################################
     
 def dashboard_sender():
-    ser = serial.Serial('/dev/ttyACM0', 115200)
+    ser = serial.Serial('/dev/ttyACM0', 115200, timeout=0)
     print("Connected to serial port...")
     last = time.time()
     while True:
-        while(time.time() - last < 5):
+        try: 
             data = ser.readline().decode('utf-8').strip()
-            with mutex:
-                print(data)
-                result = decode_nanopb(data)
-                #x=1
-        try:
-            data = ser.readline().decode('utf-8').strip()
-            with mutex:
-                print(data)
-                result = decode_nanopb(data)
-                #x=1
+            print(data)
+            result = decode_nanopb(data)
+            #x=1
+        
+            # Prepare the data point for InfluxDB
+            point = Point("dash") \
+                .tag("node", "project") \
+                .field("Temperature", array[TEMP]) \
+                .field("Intensity", array[INTENSITY]) \
+                .field("Light", array[LIGHTS]) \
+                .field("Fan", array[FAN])           
             
-                # Prepare the data point for InfluxDB
-                point = Point("dash") \
-                    .tag("node", "project") \
-                    .field("Temperature", array[TEMP]) \
-                    .field("Intensity", array[INTENSITY]) \
-                    .field("Light", array[LIGHTS]) \
-                    .field("Fan", array[FAN])           
-                
+            if (time.time() - last > 5):
                 # Write the point to InfluxDB
                 client.write(point)
                 print(f"Wrote data to InfluxDB")
@@ -142,7 +137,6 @@ def dashboard_sender():
         except Exception as e:
             print(f"Error reading from serial port or writing to InfluxDB: {e}")
             break
-    ser.close()
 
 def mqtt_sender():
     client = connect_mqtt()
