@@ -8,19 +8,43 @@
         compatible = "gpio-keys";
         status = "okay";
 
-        trig_pin: trig {
-            gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>;  // GPIO4 for TRIG
-            label = "Ultrasonic TRIG";
+        one_pin: one {
+            gpios = <&gpio0 6 GPIO_ACTIVE_HIGH>;  // GPIO4 for TRIG
+            label = "ONE";
         };
 
-        echo_pin: echo {
-            gpios = <&gpio0 5 GPIO_ACTIVE_HIGH>;  // GPIO5 for ECHO
-            label = "Ultrasonic ECHO";
+        two_pin: two {
+            gpios = <&gpio0 7 GPIO_ACTIVE_HIGH>;  // GPIO5 for ECHO
+            label = "TWO";
+        };
+
+        three_pin: three {
+            gpios = <&gpio0 8 GPIO_ACTIVE_HIGH>;  // GPIO4 for TRIG
+            label = "THREE";
+        };
+
+        four_pin: four {
+            gpios = <&gpio0 9 GPIO_ACTIVE_HIGH>;  // GPIO5 for ECHO
+            label = "FOUR";
+        };
+
+        five_pin: five {
+            gpios = <&gpio0 18 GPIO_ACTIVE_HIGH>;  // GPIO4 for TRIG
+            label = "FIVE";
+        };
+
+        zero_pin: zero {
+            gpios = <&gpio0 19 GPIO_ACTIVE_HIGH>;  // GPIO5 for ECHO
+            label = "ZERO";
         };
     };
 
     aliases {
-        trig = &trig_pin;
-        echo = &echo_pin;
+        one = &one_pin;
+        two = &two_pin;
+        three = &three_pin;
+        four = &four_pin;
+        five = &five_pin;
+        zero = &zero_pin;
     };
 };

@@ -40,8 +40,8 @@ username = 'emqx'
 password = 'public'
 
 # Define ML model
-model = tf.keras.models.load_model('gesture_model1.keras')
-labels = ['0', '1', '2', '3', '4', '5']
+model = tf.keras.models.load_model('gesture_model2.keras')
+labels = ['0', '1', '2', '3', '4', '5', 'none']
 
 ##################################################
 # Thread to classify the image using the ML model
@@ -58,6 +58,8 @@ def image_recognition(frame_queue, pred_queue):
         print(f"Predicted Gesture: {labels[predicted_class]} (Confidence: {confidence:.2f})")
         if confidence > 0.5:
             pred_queue.put_nowait(labels[predicted_class])
+        else:
+            pred_queue.put_nowait('none')
 
 ##################################################
 # Function to convert the RGB565 image data to 
@@ -187,9 +189,10 @@ def mqtt_sender(pred_queue):
     client.loop_start()
     last = time.time()
     while True:
-        #predicted_class = pred_queue.get()
-        #msg = f"{predicted_class}"
-        msg = '3'
+        predicted_class = pred_queue.get()
+        if predicted_class == 'none':
+            continue
+        msg = f"{predicted_class}"
         if (time.time() - last > 2):
             result = client.publish(topic, msg)
             status = result.rc
