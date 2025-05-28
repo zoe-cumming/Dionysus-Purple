@@ -231,7 +231,7 @@ static void advertise_nrf(bool sensor_state) {
         //printk("");
     }
 
-    k_sleep(K_MSEC(120));
+    k_sleep(K_MSEC(1000));
     bt_le_adv_stop();
 }
 
@@ -293,6 +293,15 @@ void toggle_light(void) {
     light_on = !light_on;
 }
 
+
+void advertise_thread_fn(void *arg1, void *arg2, void *arg3) {
+    while (1) {
+        advertise_nrf(sensors_on);
+        k_sleep(K_SECONDS(1));  // Adjust rate as needed
+    }
+}
+
+
 int main(void)
 {
     printk("Starting base node...\n");
@@ -332,6 +341,11 @@ int main(void)
     gpio_pin_configure(clk_dev, clk_pin, GPIO_OUTPUT_ACTIVE);
     gpio_pin_configure(data_dev, data_pin, GPIO_OUTPUT_ACTIVE);
 
+    k_thread_create(&send_thread_data, send_stack, STACK_SIZE,
+                advertise_thread_fn, NULL, NULL, NULL,
+                PRIORITY_SEND, 0, K_NO_WAIT);
+
+
     int64_t print_time = k_uptime_get();
 
     while (1) {
@@ -340,7 +354,7 @@ int main(void)
         bt_le_scan_stop();
         //print_to_serial();
         if ((k_uptime_get() - print_time) >= 2000) {
-            nanopb_encode_and_print();
+            //nanopb_encode_and_print();
             //nanopb_decode_and_print(test_encoded_buffer, test_encoded_len);
             print_time = k_uptime_get();
         }
@@ -371,7 +385,7 @@ static int sensors_cli(const struct shell *sh, size_t argc, char **argv)
                 sensors_on = true;
                 shell_print(sh, "Turning sensors on");
                 //shell_print(sh, "Calling advertise_nrf() with state %d", sensors_on);
-                advertise_nrf_cli(sh, sensors_on);
+                //advertise_nrf_cli(sh, sensors_on);
             }
         }
         else if (0 == strcmp(argv[2], "off")) {
@@ -379,7 +393,7 @@ static int sensors_cli(const struct shell *sh, size_t argc, char **argv)
                 sensors_on = false;
                 shell_print(sh, "Turning sensors off");
                 //shell_print(sh, "Calling advertise_nrf() with state %d", sensors_on);
-                advertise_nrf_cli(sh, sensors_on);
+                //advertise_nrf_cli(sh, sensors_on);
             } else {
                 shell_print(sh, "Sensors already off");
             }

@@ -42,7 +42,7 @@ K_MEM_SLAB_DEFINE_STATIC(mem_slab, MAX_BLOCK_SIZE, BLOCK_COUNT, 4);
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 
 // BLE Advertising Thread
-volatile bool sensor_state = true;             
+volatile int sensor_state = 1;             
 volatile bool packet_received = false; 
 
 // Constants for BLE
@@ -323,14 +323,8 @@ void ble_thread_fn(void *arg1, void *arg2, void *arg3) {
 			
         }
 
-        //k_sleep(K_SECONDS(1));
+        k_sleep(K_SECONDS(1));
         bt_le_scan_stop();
-
-        // If no packet was received, keep sensor_state = true (default behavior)
-        if (!packet_received) {
-            sensor_state = true;
-           // printk("No packet received, defaulting sensor_state to TRUE\n");
-        }
 
         if (sensor_state) {
             //printk("Advertising Thingy data (sensor_state = TRUE)\n");
