@@ -17,133 +17,97 @@
 static const struct pwm_dt_spec servo = PWM_DT_SPEC_GET(DT_NODELABEL(servo));
 static const uint32_t min_pulse = DT_PROP(DT_NODELABEL(servo), min_pulse);
 static const uint32_t max_pulse = DT_PROP(DT_NODELABEL(servo), max_pulse);
-#define STEP PWM_USEC(100)
 
-uint32_t max = max_pulse;
+#define PWM_PERIOD PWM_MSEC(20)
 
 enum direction {
-	DOWN,
-	UP,
+    LEFT,
+    RIGHT
 };
 
-#define ONE 6
-#define TWO 7
-#define THREE 8
-#define FOUR 9
-#define FIVE 18
-#define ZERO 19
+#define PIN_ZERO 3
+#define PIN_ONE 4
+#define PIN_TWO 5
 #define GPIO_NODE DT_NODELABEL(gpioc)
 
 static int read_speed_level(const struct device *gpio_dev) {
-    if (gpio_pin_get(gpio_dev, ONE)) {
-		return 1;
+    if (!gpio_pin_get(gpio_dev, PIN_ZERO) && !gpio_pin_get(gpio_dev, PIN_ONE) && !gpio_pin_get(gpio_dev, PIN_TWO)) {
+        printk("Speed 0\n");
+		return 0;
 	}
-    if (gpio_pin_get(gpio_dev, TWO)) {
+    if (gpio_pin_get(gpio_dev, PIN_ZERO) && !gpio_pin_get(gpio_dev, PIN_ONE) && !gpio_pin_get(gpio_dev, PIN_TWO)) {
+        printk("Speed 1\n");
+        return 1;
+    }
+    if (!gpio_pin_get(gpio_dev, PIN_ZERO) && gpio_pin_get(gpio_dev, PIN_ONE) && !gpio_pin_get(gpio_dev, PIN_TWO)) {
+        printk("Speed 2\n");
         return 2;
     }
-    if (gpio_pin_get(gpio_dev, THREE)) {
+    if (gpio_pin_get(gpio_dev, PIN_ZERO) && gpio_pin_get(gpio_dev, PIN_ONE) && !gpio_pin_get(gpio_dev, PIN_TWO)) {
+        printk("Speed 3\n");
         return 3;
     }
-    if (gpio_pin_get(gpio_dev, FOUR)) return 4;
-    if (gpio_pin_get(gpio_dev, FIVE)) return 5;
-    return 0; // no button pressed
-}
-
-void reset_fan(void) {
-	printk("Setting servo to min pulse %u\n", min_pulse);
-    pwm_set_pulse_dt(&servo, min_pulse);
-    k_sleep(K_SECONDS(1));
-	pwm_set_pulse_dt(&servo, 0);
+    if (!gpio_pin_get(gpio_dev, PIN_ZERO) && !gpio_pin_get(gpio_dev, PIN_ONE) && gpio_pin_get(gpio_dev, PIN_TWO)) {
+        printk("Speed 4\n");
+        return 4;
+    }
+    if (gpio_pin_get(gpio_dev, PIN_ZERO) && !gpio_pin_get(gpio_dev, PIN_ONE) && gpio_pin_get(gpio_dev, PIN_TWO)) {
+        printk("Speed 5\n");
+        return 5;
+    }
+    if (gpio_pin_get(gpio_dev, PIN_ZERO) && gpio_pin_get(gpio_dev, PIN_ONE) && gpio_pin_get(gpio_dev, PIN_TWO)) {
+        printk("None\n");
+        return 0;
+    }
+    printk("Ruh Roh\n");
+    return -1; // no button pressed
 }
 
 int main(void)
 {
-	uint32_t pulse_width = min_pulse;
-	uint32_t current_pulse = min_pulse;
-	uint32_t delay_ms = 500;
-	enum direction dir = UP;
-	int ret;
+    if (!pwm_is_ready_dt(&servo)) {
+        printk("Error: PWM device %s is not ready\n", servo.dev->name);
+        return 0;
+    }
 
-	printk("Servomotor control\n");
-
-	if (!pwm_is_ready_dt(&servo)) {
-		printk("Error: PWM device %s is not ready\n", servo.dev->name);
-		return 0;
-	}
-
-	const struct device *gpio_dev = DEVICE_DT_GET(GPIO_NODE);
+    const struct device *gpio_dev = DEVICE_DT_GET(GPIO_NODE);
     if (!device_is_ready(gpio_dev)) {
         printk("Error: GPIO device not ready\n");
         return 1;
     }
 
-    // Configure pins
-    ret = gpio_pin_configure(gpio_dev, ONE, GPIO_INPUT | GPIO_PULL_DOWN);
-    if (ret < 0) {
-        printk("Error configuring trigger pin: %d\n", ret);
-        return 1;
-    }
+    gpio_pin_configure(gpio_dev, PIN_ZERO, GPIO_INPUT);
+    gpio_pin_configure(gpio_dev, PIN_ONE, GPIO_INPUT);
+    gpio_pin_configure(gpio_dev, PIN_TWO, GPIO_INPUT);
 
-    // Configure pins
-    ret = gpio_pin_configure(gpio_dev, TWO, GPIO_INPUT | GPIO_PULL_DOWN);
-    if (ret < 0) {
-        printk("Error configuring trigger pin: %d\n", ret);
-        return 1;
-    }
-
-	// Configure pins
-    ret = gpio_pin_configure(gpio_dev, THREE, GPIO_INPUT | GPIO_PULL_DOWN);
-    if (ret < 0) {
-        printk("Error configuring trigger pin: %d\n", ret);
-        return 1;
-    }
-
-	// Configure pins
-    ret = gpio_pin_configure(gpio_dev, FOUR, GPIO_INPUT | GPIO_PULL_DOWN);
-    if (ret < 0) {
-        printk("Error configuring trigger pin: %d\n", ret);
-        return 1;
-    }
-
-	// Configure pins
-    ret = gpio_pin_configure(gpio_dev, FIVE, GPIO_INPUT | GPIO_PULL_DOWN);
-    if (ret < 0) {
-        printk("Error configuring trigger pin: %d\n", ret);
-        return 1;
-    }
-
-	// Configure pins
-    ret = gpio_pin_configure(gpio_dev, ZERO, GPIO_INPUT | GPIO_PULL_DOWN);
-    if (ret < 0) {
-        printk("Error configuring trigger pin: %d\n", ret);
-        return 1;
-    }
-
-    printk("Starting servo sweep\n");
-	int speed = 0;
+    uint32_t pulse = min_pulse;
+    int speed = 0;
+    int ret;
+    printk("Servo continuous control started\n");
 
     while (1) {
-		//ret = pwm_set_pulse_dt(&servo, pulse_width);
-		ret = pwm_set_pulse_dt(&servo, current_pulse);
-		//ret = pwm_set_dt(&servo, current_pulse, PWM_MSEC(20));
-		if (ret < 0) {
-			printk("Error %d: failed to set pulse width\n", ret);
-			return 0;
-		}
+        speed = read_speed_level(gpio_dev);
 
-		//current_pulse = (current_pulse == min_pulse) ? max_pulse : min_pulse;
-		speed = read_speed_level(gpio_dev);
-		printk("Speed is %d\n", speed);
+        if (speed == 0) {
+            k_sleep(K_MSEC(200));
+            continue;
+        }
 
-		if (speed == 0) {
-			current_pulse = min_pulse;
-		} if (speed == 1) {
-			current_pulse = max_pulse;
-		} if (speed == 2) {
-			current_pulse = (max_pulse + min_pulse) / 2;
-		}
+        uint32_t step_size = (max_pulse - min_pulse) / (20 - (speed * 3));
+        pulse += step_size;
+        if (pulse > max_pulse) {
+            pulse = min_pulse;
+        }
 
-		k_sleep(K_MSEC(1000));
+        ret = pwm_set_dt(&servo, PWM_PERIOD, pulse);
+        if (ret < 0) {
+            printk("PWM error: %d\n", ret);
+        } else {
+            printk("Speed %d -> pulse %u\n", speed, pulse);
+        }
+
+        k_sleep(K_MSEC(50));
     }
-	return 0;
+
+    return 0;
 }

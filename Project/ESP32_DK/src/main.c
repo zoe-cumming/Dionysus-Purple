@@ -23,6 +23,12 @@
 #define ECHO_PIN 5
 #define GPIO_NODE DT_NODELABEL(gpio0)
 
+// GPIO pins
+#define PIN_ZERO 6
+#define PIN_ONE 7
+#define PIN_TWO 8
+#define GPIO_NODE DT_NODELABEL(gpio0)
+
 // Define timeout values
 #define ECHO_TIMEOUT_US 25000
 #define MAX_RANGE_TIMEOUT_US 40000 // CHANGE THIS VALUE?
@@ -445,6 +451,39 @@ void poll_thread(void *arg1, void *arg2, void *arg3) {
     }
 }
 
+int init_gpios(void)
+{
+    int ret;
+	const struct device *gpio_dev = DEVICE_DT_GET(GPIO_NODE);
+    if (!device_is_ready(gpio_dev)) {
+        printk("Error: GPIO device not ready\n");
+        return 1;
+    }
+
+    // Configure GPIO pin 6 (LSB)
+    ret = gpio_pin_configure(gpio_dev, PIN_ZERO, GPIO_OUTPUT_INACTIVE);
+    if (ret < 0) {
+        printk("Error configuring trigger pin: %d\n", ret);
+        return 1;
+    }
+
+    // Configure GPIO pin 7
+    ret = gpio_pin_configure(gpio_dev, PIN_ONE, GPIO_OUTPUT_INACTIVE);
+    if (ret < 0) {
+        printk("Error configuring trigger pin: %d\n", ret);
+        return 1;
+    }
+
+	// Configure GPIO pin 8 (MSB)
+    ret = gpio_pin_configure(gpio_dev, PIN_TWO, GPIO_OUTPUT_INACTIVE);
+    if (ret < 0) {
+        printk("Error configuring trigger pin: %d\n", ret);
+        return 1;
+    }
+
+    return 0;
+}
+
 void ultra_thread(void *arg1, void *arg2, void *arg3) {
     // Define timing variables
     uint32_t start_time, cycles_spent;
@@ -572,6 +611,12 @@ int main(void)
 	}
     fds[0].events = ZSOCK_POLLIN;
     nfds = 1;
+
+    ret = init_gpios();
+    if (ret) {
+        printk("Error configuring gpio pins");
+        return 1;
+    }
 
     // Poll for MQTT events until connected
     while (k_sem_count_get(&sem_mqtt_connected) == 0) {
