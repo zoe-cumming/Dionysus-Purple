@@ -126,7 +126,7 @@ static int do_pdm_transfer(const struct device *dmic_dev,
 
 		// Detect clap
 		for (size_t i = 0; i < sample_count; ++i) {
-			if ((abs(samples[i]) > 10000) && (i != 32)) {
+			if ((abs(samples[i]) > 10000) && (i != 32) && (i != 0)) {
 				LOG_INF("Clap at sample %d", i);
 				// update clap
 				k_mutex_lock(&data_lock, K_FOREVER);
@@ -134,6 +134,7 @@ static int do_pdm_transfer(const struct device *dmic_dev,
 					shared_data.clap = 0;
 				} else {
 					shared_data.clap = 1;
+					printk("clapp detected and changed");
 				}
 				k_mutex_unlock(&data_lock);
 				break;
@@ -198,10 +199,10 @@ static void advertise_thingy(struct values data) {
 	if (err) {
 		printk("Advertising failed: %d\n", err);
 	} else {
-		printk("[ADVERTISING] iBeacon Payload (%d bytes): ", sizeof(beacon_data));
-		for (int i = 0; i < sizeof(beacon_data); i++) {
-			printk("%02X ", beacon_data[i]);
-		}
+		//printk("[ADVERTISING] iBeacon Payload (%d bytes): ", sizeof(beacon_data));
+		// for (int i = 0; i < sizeof(beacon_data); i++) {
+		// 	printk("%02X ", beacon_data[i]);
+		// }
 		printk("\n");
 	}
 
@@ -209,7 +210,7 @@ static void advertise_thingy(struct values data) {
 	shared_data.clap = 0;
 	k_mutex_unlock(&data_lock);
 
-    k_sleep(K_MSEC(20));
+    k_sleep(K_MSEC(70));
     bt_le_adv_stop();
 }
 
@@ -235,7 +236,7 @@ static bool receive_nrf_sensor_state(struct bt_data *data, void *user_data) {
 
     // Update sensor_state from payload
     sensor_state = payload[MAJOR_OFFSET + 1];
-    printk("Received BLE packet. Sensor state: %d\n", sensor_state);
+    //printk("Received BLE packet. Sensor state: %d\n", sensor_state);
 	// Toggle LED for debugging
 	gpio_pin_toggle_dt(&led);
 
@@ -266,7 +267,8 @@ void temp_thread_fn(void *arg1, void *arg2, void *arg3) {
         read_temperature(&local);
 
         k_mutex_lock(&data_lock, K_FOREVER);
-        shared_data.temp = local.temp;
+        //shared_data.temp = local.temp;
+		//shared_data.temp += 1;
         k_mutex_unlock(&data_lock);
 
         k_sleep(K_SECONDS(5));  // Sample less frequently
@@ -321,26 +323,27 @@ void ble_thread_fn(void *arg1, void *arg2, void *arg3) {
 			
         }
 
-        k_sleep(K_SECONDS(1));
+        //k_sleep(K_SECONDS(1));
         bt_le_scan_stop();
 
         // If no packet was received, keep sensor_state = true (default behavior)
         if (!packet_received) {
             sensor_state = true;
-            printk("No packet received, defaulting sensor_state to TRUE\n");
+           // printk("No packet received, defaulting sensor_state to TRUE\n");
         }
 
         if (sensor_state) {
-            printk("Advertising Thingy data (sensor_state = TRUE)\n");
+            //printk("Advertising Thingy data (sensor_state = TRUE)\n");
 
             struct values copy;
             k_mutex_lock(&data_lock, K_FOREVER);
+			shared_data.temp += 1;
             copy = shared_data;
             k_mutex_unlock(&data_lock);
 
             advertise_thingy(copy);
         } else {
-            printk("Not advertising (sensor_state = FALSE)\n");
+            //printk("Not advertising (sensor_state = FALSE)\n");
         }
 
         k_sleep(K_SECONDS(1));
