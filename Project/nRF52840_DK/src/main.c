@@ -45,6 +45,14 @@ struct json_data {
 static bool light_on = false;
 static bool sensors_on = true;
 
+#define STACK_SIZE 2048
+#define PRIORITY_SEND 2
+#define PRIORITY_RECEIVE 3
+K_THREAD_STACK_DEFINE(receive_stack, STACK_SIZE);
+K_THREAD_STACK_DEFINE(send_stack, STACK_SIZE);
+static struct k_thread receive_thread_data;
+static struct k_thread send_thread_data;
+
 static uint8_t test_encoded_buffer[64];
 static size_t test_encoded_len;
 
@@ -80,6 +88,9 @@ void nanopb_encode_and_print(void) {
     data.temp = temp;
     data.clap = light_on;
     data.light = light;
+    data.temp = 30;
+    data.clap = true;
+    data.light = 100;
 
     pb_ostream_t stream = pb_ostream_from_buffer(test_encoded_buffer, sizeof(test_encoded_buffer));
 
@@ -101,14 +112,14 @@ void nanopb_decode_and_print(const uint8_t *buffer, size_t len) {
     pb_istream_t stream = pb_istream_from_buffer(buffer, len);
 
     if (!pb_decode(&stream, SensorData_fields, &data)) {
-        printk("Nanopb decoding failed: %s\n", PB_GET_ERROR(&stream));
+        //printk("Nanopb decoding failed: %s\n", PB_GET_ERROR(&stream));
         return;
     }
 
-    printk("Decoded SensorData:\n");
-    printk("  Temp: %d\n", data.temp);
-    printk("  Light on: %d\n", data.clap);
-    printk("  Light: %d\n", data.light);
+    //printk("Decoded SensorData:\n");
+    //printk("  Temp: %d\n", data.temp);
+    //printk("  Light on: %d\n", data.clap);
+    //printk("  Light: %d\n", data.light);
 }
 
 static bool adv_data_cb(struct bt_data *data, void *user_data) {
@@ -181,7 +192,7 @@ static void advertise_nrf_cli(const struct shell *sh, bool sensor_state) {
         shell_print(sh, "");
     }
 
-    k_sleep(K_MSEC(200));
+    k_sleep(K_MSEC(150));
     bt_le_adv_stop();
 }
 
@@ -217,10 +228,10 @@ static void advertise_nrf(bool sensor_state) {
         // for (int i = 0; i < sizeof(beacon_data); i++) {
         //     shell_fprintf(sh, SHELL_NORMAL, "%02X ", beacon_data[i]);
         // }
-        printk("");
+        //printk("");
     }
 
-    k_sleep(K_MSEC(20));
+    k_sleep(K_MSEC(120));
     bt_le_adv_stop();
 }
 
@@ -273,15 +284,14 @@ void toggle_light(void) {
 
     if (light_on) {
         send_colour(0, 0, 0);  // Off (black)
-        printk("Toggled LED OFF\n");
+        //printk("Toggled LED OFF\n");
     } else {
         send_colour(255, 255, 255);  // On (white)
-        printk("Toggled LED ON\n");
+        //printk("Toggled LED ON\n");
     }
 
     light_on = !light_on;
 }
-
 
 int main(void)
 {
@@ -330,8 +340,8 @@ int main(void)
         bt_le_scan_stop();
         //print_to_serial();
         if ((k_uptime_get() - print_time) >= 2000) {
-            //nanopb_encode_and_print();
-            // nanopb_decode_and_print(test_encoded_buffer, test_encoded_len);
+            nanopb_encode_and_print();
+            //nanopb_decode_and_print(test_encoded_buffer, test_encoded_len);
             print_time = k_uptime_get();
         }
         //if clap, switch light
@@ -340,7 +350,7 @@ int main(void)
             clap = 0;  // reset after action
         }
 
-        advertise_nrf(sensors_on);
+        //advertise_nrf(sensors_on);
 
         bt_le_scan_start(&scan_params, device_found);
     }
@@ -361,7 +371,7 @@ static int sensors_cli(const struct shell *sh, size_t argc, char **argv)
                 sensors_on = true;
                 shell_print(sh, "Turning sensors on");
                 //shell_print(sh, "Calling advertise_nrf() with state %d", sensors_on);
-                //advertise_nrf_cli(sh, sensors_on);
+                advertise_nrf_cli(sh, sensors_on);
             }
         }
         else if (0 == strcmp(argv[2], "off")) {
@@ -369,7 +379,7 @@ static int sensors_cli(const struct shell *sh, size_t argc, char **argv)
                 sensors_on = false;
                 shell_print(sh, "Turning sensors off");
                 //shell_print(sh, "Calling advertise_nrf() with state %d", sensors_on);
-                //advertise_nrf_cli(sh, sensors_on);
+                advertise_nrf_cli(sh, sensors_on);
             } else {
                 shell_print(sh, "Sensors already off");
             }
