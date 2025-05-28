@@ -6,7 +6,7 @@ CSSE4011 Project - Couch Potato Paradise: Smart Home System Using Sensor Data
 
 | Team Member      | Description of Contribution                                                             |
 |------------------|-----------------------------------------------------------------------------------------|
-| Tara Bashirzadeh | Machine learning model development. Two-way bluetooth communication between the Thingy52 and nRF52840 DK. Temperature sensor set up and Chainable LED.  |
+| Tara Bashirzadeh | Machine learning model development. Two-way bluetooth communication between the Thingy52 and nRF52840 DK. nanPB encoding. Temperature sensor set up and Chainable LED.  |
 | Zoe Cumming      | Collecting and streaming image data using ESP32-S3-EYE (via TCP socket). Wifi set-up. DMIC and light sensor set up. Configuring servo motor. |
 | Jacob Gregg      | MQTT set-up. Dashboard and M5 Core 2 displays. Configuring servo motor. |
 
