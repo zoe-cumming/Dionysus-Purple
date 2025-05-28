@@ -41,6 +41,10 @@ K_MEM_SLAB_DEFINE_STATIC(mem_slab, MAX_BLOCK_SIZE, BLOCK_COUNT, 4);
 // Set up LED for debugging
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 
+// BLE Advertising Thread
+volatile bool sensor_state = true;             
+volatile bool packet_received = false; 
+
 // Constants for BLE
 #define UUID_OFFSET 4
 #define MAJOR_OFFSET 20
@@ -104,7 +108,7 @@ static int do_pdm_transfer(const struct device *dmic_dev,
 		uint32_t size;
 		
 		// Toggle LED for debugging
-		gpio_pin_toggle_dt(&led);
+		//gpio_pin_toggle_dt(&led);
 
 		// Read PDM values
 		ret = dmic_read(dmic_dev, 0, &buffer, &size, READ_TIMEOUT);
@@ -114,7 +118,7 @@ static int do_pdm_transfer(const struct device *dmic_dev,
 		}
 
 		// Toggle LED for debugging 
-		gpio_pin_toggle_dt(&led);
+		//gpio_pin_toggle_dt(&led);
 
 		// Convert PDM values to PCM values
 		int16_t *samples = (int16_t *)buffer;
@@ -209,6 +213,37 @@ static void advertise_thingy(struct values data) {
     bt_le_adv_stop();
 }
 
+static bool receive_nrf_sensor_state(struct bt_data *data, void *user_data) {
+    static const uint8_t expected_uuid[16] = {
+        0x18, 0xEE, 0x15, 0x16, 0x01, 0x6B, 0x4B, 0xEC,
+        0xAD, 0x96, 0xBC, 0xB9, 0x6D, 0x16, 0x6E, 0x97
+    };
+
+    if (data->type != BT_DATA_MANUFACTURER_DATA || data->data_len < IBEACON_EXPECTED_LEN)
+        return true;
+
+    const uint8_t *payload = data->data;
+
+    if (!(payload[0] == 0x4C && payload[1] == 0x00 && payload[2] == 0x02 && payload[3] == 0x15))
+        return true;
+
+    if (memcmp(&payload[4], expected_uuid, 16) != 0)
+        return true;
+
+    // A matching packet was received
+    packet_received = true;
+
+    // Update sensor_state from payload
+    sensor_state = payload[MAJOR_OFFSET + 1];
+    printk("Received BLE packet. Sensor state: %d\n", sensor_state);
+	// Toggle LED for debugging
+	gpio_pin_toggle_dt(&led);
+
+    return false;  // Stop parsing further
+}
+
+
+
 // Clap Detection Thread
 void clap_thread_fn(void *dmic_dev_ptr, void *cfg_ptr, void *unused) {
     const struct device *dmic_dev = dmic_dev_ptr;
@@ -260,16 +295,54 @@ void light_thread_fn(void *arg1, void *arg2, void *arg3) {
     }
 }
 
-// BLE Advertising Thread
+static void device_found(const bt_addr_le_t *addr, int8_t rssi,
+                         uint8_t type, struct net_buf_simple *ad) {
+    bt_data_parse(ad, receive_nrf_sensor_state, NULL);
+}
+
+
+
 void ble_thread_fn(void *arg1, void *arg2, void *arg3) {
+    struct bt_le_scan_param scan_params = {
+        .type     = BT_LE_SCAN_TYPE_ACTIVE,
+        .options  = BT_LE_SCAN_OPT_FILTER_DUPLICATE,
+        .interval = 0x0060,
+        .window   = 0x0030,
+    };
+
     while (1) {
-        struct values copy;
+        packet_received = false;  // Reset before each scan cycle
 
-        k_mutex_lock(&data_lock, K_FOREVER);
-        copy = shared_data;
-        k_mutex_unlock(&data_lock);
+        int err = bt_le_scan_start(&scan_params, device_found);
+        if (err) {
+            printk("Scan start failed: %d\n", err);
+        } else {
+            printk("Scanning...\n");
+			
+        }
 
-        advertise_thingy(copy);
+        k_sleep(K_SECONDS(1));
+        bt_le_scan_stop();
+
+        // If no packet was received, keep sensor_state = true (default behavior)
+        if (!packet_received) {
+            sensor_state = true;
+            printk("No packet received, defaulting sensor_state to TRUE\n");
+        }
+
+        if (sensor_state) {
+            printk("Advertising Thingy data (sensor_state = TRUE)\n");
+
+            struct values copy;
+            k_mutex_lock(&data_lock, K_FOREVER);
+            copy = shared_data;
+            k_mutex_unlock(&data_lock);
+
+            advertise_thingy(copy);
+        } else {
+            printk("Not advertising (sensor_state = FALSE)\n");
+        }
+
         k_sleep(K_SECONDS(1));
     }
 }
