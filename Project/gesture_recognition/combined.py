@@ -40,8 +40,8 @@ username = 'emqx'
 password = 'public'
 
 # Define ML model
-model = tf.keras.models.load_model('gesture_model1.keras')
-labels = ['0', '1', '2', '3', '4', '5']
+model = tf.keras.models.load_model('gesture_model2.keras')
+labels = ['0', '1', '2', '3', '4', '5', 'none']
 
 ##################################################
 # Thread to classify the image using the ML model
